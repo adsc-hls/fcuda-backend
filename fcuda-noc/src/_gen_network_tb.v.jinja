@@ -1,0 +1,174 @@
+//============================================================================//
+//    FCUDA
+//    Copyright (c) <2016> 
+//    <University of Illinois at Urbana-Champaign>
+//    <University of California at Los Angeles> 
+//    All rights reserved.
+// 
+//    Developed by:
+// 
+//        <ES CAD Group & IMPACT Research Group>
+//            <University of Illinois at Urbana-Champaign>
+//            <http://dchen.ece.illinois.edu/>
+//            <http://impact.crhc.illinois.edu/>
+// 
+//        <VAST Laboratory>
+//            <University of California at Los Angeles>
+//            <http://vast.cs.ucla.edu/>
+// 
+//        <Hardware Research Group>
+//            <Advanced Digital Sciences Center>
+//            <http://adsc.illinois.edu/>
+//============================================================================//
+
+`timescale 1ns/1ps
+`include "noc_pkt.vh"
+module DUT_TOP_tb(); 
+
+{%- for x in scalar_values %}
+parameter {{x.name}} = {{x.value}};
+{%- endfor %}
+
+parameter EXT_MEM_DELAY = {{external_mem_delay_sim}};
+
+reg[2048 : 1] mem_init_file;
+reg[2048 : 1] mem_final_file;
+
+reg ap_clk;
+reg ap_rst;
+reg ap_start;
+wire ap_done;
+
+wire mem_req_din;
+wire mem_req_full_n;
+wire mem_req_write;
+wire mem_rsp_empty_n;
+wire mem_rsp_read;
+wire[31 : 0] mem_address;
+wire[{{(data_width - 1)}} : 0] mem_datain;
+wire[{{(data_width - 1)}} : 0] mem_dataout;
+wire[31 : 0] mem_size;
+
+gen_network #(
+  .DEPTH({{output_size}})
+) noc (
+  .ap_clk(ap_clk),
+  .ap_rst(ap_rst),   
+
+  .mem_req_din(mem_req_din),
+  .mem_req_full_n(mem_req_full_n),
+  .mem_req_write(mem_req_write),
+  .mem_rsp_empty_n(mem_rsp_empty_n),
+  .mem_rsp_read(mem_rsp_read),
+  .mem_address(mem_address),
+  .mem_datain(mem_datain),
+  .mem_dataout(mem_dataout),
+  .mem_size(mem_size),
+
+  {%- for x in scalar_ports %}
+  .{{x.name}}({{x.name}}),
+  {%- endfor %}
+
+  .ap_start(ap_start),
+  .ap_ready(),
+  .ap_done(ap_done),
+  .ap_idle()
+);
+
+always begin
+ap_clk = 0; #5 ap_clk = 1; #5;
+end
+
+initial begin
+  ap_rst = 1;  
+  ap_start = 0;
+#30 ap_rst = 0;
+#10 ap_start = 1;
+#10 ap_start = 0;
+end
+
+integer i;
+reg[{{(data_width - 1)}} : 0] mem_data [{{(sim_file_size - 1)}} : 0];
+reg[{{(data_width - 1)}} : 0] gold_data [{{(sim_file_size - 1)}} : 0];
+
+//shift register to simulate external memory access delay
+reg [{{(data_width)}} : 0] mem_fifo [EXT_MEM_DELAY - 1 : 0];
+
+initial begin: init_mem_data
+  $sformat(mem_init_file, "{{input_file}}");
+  $sformat(mem_final_file, "{{gold_file}}");
+  $readmemh(mem_init_file, mem_data);
+  $readmemh(mem_final_file, gold_data);
+  for (i = 0; i < EXT_MEM_DELAY; i = i + 1) begin
+    mem_fifo[i] <= {{(data_width + 1)}}'b0;
+  end
+end
+
+reg[{{(data_width - 1)}} : 0] data_in;
+reg rsp_empty_n_reg;
+assign mem_req_full_n = 1'b1;
+assign mem_rsp_empty_n = rsp_empty_n_reg;
+assign mem_datain = data_in;
+
+reg[31 : 0] clock_counter;
+
+
+wire re = (mem_req_din === 1'b0 && mem_req_write === 1'b1);
+
+always @(posedge ap_clk) begin
+  for (i = 0; i < EXT_MEM_DELAY - 1; i = i + 1) begin
+    mem_fifo[i + 1] <= mem_fifo[i];
+  end
+  if (re === 1'b1) begin
+    $display("[%m] TB FIRST READING at %t, address=%h, data=%h", $time, mem_address, mem_data[mem_address]);
+    mem_fifo[0] <= {1'b1, mem_data[mem_address]};
+  end
+  else
+    mem_fifo[0] <= {{(data_width + 1)}}'b0;
+end 
+
+always @(posedge ap_clk) begin
+  if (ap_rst === 1'b1) begin
+    clock_counter <= 32'b0;
+  end
+  else begin
+    if (mem_fifo[EXT_MEM_DELAY - 1][{{data_width}}] === 1'b1) begin 
+      $display("[%m] TB FINAL READING at %t, data=%h", $time, mem_fifo[EXT_MEM_DELAY - 1][{{(data_width - 1)}} : 0]);
+      data_in <= mem_fifo[EXT_MEM_DELAY - 1][{{(data_width - 1)}} : 0];
+      rsp_empty_n_reg <= 1'b1;
+    end 
+    else begin
+      rsp_empty_n_reg <= 1'b0;
+    end
+
+    if (mem_req_din === 1'b1 && mem_req_write === 1'b1) begin
+      $display("[%m] TB WRITING at %t, address=%h, data=%h", $time, mem_address, mem_dataout);
+      mem_data[mem_address] <= mem_dataout;
+    end
+    clock_counter <= clock_counter + 1;
+  end
+end
+
+integer result = 0;
+always @(*) begin
+  if (ap_done) begin
+    $display("Simulation finished, clock cycle=%d", clock_counter);
+    //$writememh(mem_final_file, mem_data);
+    for (i = 0; i < {{sim_file_size}}; i = i + 1) begin
+      if ((|mem_data[i]) === 1'bx || mem_data[i] != gold_data[i]) begin
+        $display("mismatched at %d: data=%h, gold=%h", i, mem_data[i], gold_data[i]);
+        result = result + 1;
+      end
+    end
+
+    if (result == 0)
+      $display("PASS");
+    else
+      $display("FAIL");
+    $finish;
+  end 
+end
+
+
+endmodule
+

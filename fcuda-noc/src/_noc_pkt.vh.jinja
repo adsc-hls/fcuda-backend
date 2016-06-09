@@ -1,0 +1,262 @@
+//============================================================================//
+//    FCUDA
+//    Copyright (c) <2016> 
+//    <University of Illinois at Urbana-Champaign>
+//    <University of California at Los Angeles> 
+//    All rights reserved.
+// 
+//    Developed by:
+// 
+//        <ES CAD Group & IMPACT Research Group>
+//            <University of Illinois at Urbana-Champaign>
+//            <http://dchen.ece.illinois.edu/>
+//            <http://impact.crhc.illinois.edu/>
+// 
+//        <VAST Laboratory>
+//            <University of California at Los Angeles>
+//            <http://vast.cs.ucla.edu/>
+// 
+//        <Hardware Research Group>
+//            <Advanced Digital Sciences Center>
+//            <http://adsc.illinois.edu/>
+//============================================================================//
+
+`define OA_WAIT_DELAY {{outstanding_array_wait_delay}}
+{%- if directory_bypass == 1 %}
+`define DIRECTORY_BYPASS
+{% endif %}
+{%- if directory_enable == 1 %}
+`define REAL_DIRECTORY_IMPLEMENTATION
+`define ENABLE_DIRECTORIES
+{% endif %}
+{%- if outstanding_array_enable == 1 %}
+`define ENABLE_OUTSTANDING_ARRAY
+`define ENABLE_OA_TIMEOUT
+{% endif %}
+`define STATIC_MEM_NEXTROUTE
+{%- if directory_size %}
+`define DIRECTORY_SIZE {{directory_size}} 
+`define INDEX_WIDTH {{directory_index}}
+{%- endif %}
+
+// default directory size
+`ifndef DIRECTORY_SIZE
+`define DIRECTORY_SIZE 512
+`endif
+
+// default directory size (index width)
+`ifndef INDEX_WIDTH
+`define INDEX_WIDTH 9
+`endif
+
+// default oa_wait period
+`ifndef OA_WAIT_DELAY
+`define OA_WAIT_DELAY 50
+`endif
+
+// format of a word is:
+// [SENDOKBIT][SENDBIT][NEXTHOP][LASTBIT][DEST][SRC][TYPE][DATA]
+// 
+// Semantics of inputs:
+// SENDOKBIT     - router has free space in FIFOs (used for flow control)
+// SENDBIT       - packet is valid
+// NEXTHOP       - next hop at NEXT ROUTER (e.g., it's the 'next next hop'):
+//                 one hot encoded
+// LASTBIT       - signifies that packet of length >0 has ended
+// DEST_ADDRESS  - destnation address of packet
+// SRC_ADDRESS   - src address of packet
+// TYPE          - packet type
+// DATA          - pkt payload
+//               - EXPANDED s.t. data == 64 bits
+//                            top 32        = data
+//                            bottom 32     = address
+
+`include "macros.vh"
+
+///////////////////////////////////////////////////////////////////////////////
+// System Configuration
+///////////////////////////////////////////////////////////////////////////////
+
+
+// Number of inputs in a router
+`define NUM_INPUTS 5
+`define NUM_PORTS `NUM_INPUTS
+
+// log(`NUM_PORTS) + 1
+`define LOG_NUM_PORTS  3
+
+/*
+ * This is the total number of nodes (compute, memory) in the system - 
+ * not including routers. */
+
+// 9 compute, 1 memory => 10
+`define NUM_COMPUTE_NODES {{(num_cores + 1)}}
+
+// Number of routers
+`define NUM_ROUTER_NODES {{num_cores}}
+
+// adjust the size of fifos used in NoC- available in powers of 2
+`define FIFO_WIDTH 5
+`define FIFO_SIZE (1 << `FIFO_WIDTH)
+
+// if the number of packets arrive at one FIFO of a router port passes the
+// WATER MARK point, the neighbor routers are notified to stop sending packets 
+// (by setting SENDOKBIT to 0 --now only works for writing)
+`define ROUTER_LOW_WATER_MARK       `FIFO_WIDTH'd16 
+`define ROUTER_UNIFIED_ROUTELOOKUP   1
+
+///////////////////////////////////////////////////////////////////////////////
+// Dataword params 
+///////////////////////////////////////////////////////////////////////////////
+
+// Widths of parts of data word
+`define DATA_DATAWIDTH (`DATA_AWIDTH + `DATA_DWIDTH) // Width of payload
+`define DATA_AWIDTH  32                   // width of address
+`define DATA_DWIDTH  {{data_width}}                   // width of data
+`define NEXTHOPWIDTH    4                 // width of NHOP field: one hot encoded
+`define DESTWIDTH       {{dest_width}}                 // width of destination address in network //LOG2(NUM_COMPUTE_NODES + NUM_MEM_NODE + NUM_ROUTER_NODES) + 1
+`define DATA_TYPEWIDTH  7                 // width of packet type field
+`define TYPEWIDTH       `DATA_TYPEWIDTH   // width of packet type field
+`define DATA_SRCWIDTH   `DESTWIDTH        // width of pkt src field
+`define SRCWIDTH        `DESTWIDTH        // width of pkt src field
+
+`define DATA_A_OFFSET 0
+`define DATA_D_OFFSET 32
+
+ // total width of control word
+`define CTRLWIDTH (`DESTWIDTH + 1 + `NEXTHOPWIDTH + 1 + 1)
+
+// width of entire payload field: includes type, src address, some data bits
+`define DATAWIDTH (`DATA_DATAWIDTH + `DATA_TYPEWIDTH + `DATA_SRCWIDTH)
+
+// Total size of an input or output line 
+`define IO_WIDTH (`DATAWIDTH + `CTRLWIDTH)
+
+// width of the routing table: one bit per possible address = 1 << destwidth 
+`define ROUTE_WIRE_WIDTH  (1 << `DESTWIDTH ) /* 32 */ 
+
+// Aggregate widths
+`define TOTAL_PKT_TYPE_WIDTH (`DATA_TYPEWIDTH * `NUM_INPUTS)
+`define TOTAL_SRC_ADDR_WIDTH (`DATA_SRCWIDTH * `NUM_INPUTS)
+`define TOTAL_DEST_ADDR_WIDTH (`DESTWIDTH * `NUM_INPUTS)
+`define TOTAL_WIDTH (`NUM_INPUTS * `IO_WIDTH)                // Total size of all inputs / outputs to a router
+`define ALL_ROUTE_BITS (`NUM_INPUTS * `NEXTHOPWIDTH * `ROUTE_WIRE_WIDTH)   // total number of routing table bits for a single router 
+
+// Positions of parts of data word
+`define LASTBIT (`DESTWIDTH)                           // position of LASTBIT within control word
+`define NEXTHOPBIT  (`LASTBIT + 1)                     // position of NEXTHOP in control word
+`define SENDBIT (`DESTWIDTH + 1 + `NEXTHOPWIDTH)       // pos of SENDBIT in ctrl word
+`define SENDOKBIT (`DESTWIDTH + 1 + `NEXTHOPWIDTH + 1) // pos of SENDOKBIT in ctrl word
+`define TYPE_OFFSET (`DATA_DATAWIDTH)                  // offset within packet to bit 0 of type field
+`define SRC_OFFSET (`TYPE_OFFSET + `DATA_TYPEWIDTH)    // offset within packet to bit 0 of src address field
+`define DATA_OFFSET 0                                  // offset of payload field within a packet
+
+// offsets within a word
+`define DEST_OFFSET ( `DATAWIDTH)
+`define LASTBIT_OFFSET ( `DEST_OFFSET + `DESTWIDTH) 
+`define NEXTHOP_OFFSET ( `LASTBIT_OFFSET + 1)
+`define SENDBIT_OFFSET ( `NEXTHOP_OFFSET + `NEXTHOPWIDTH)
+`define SENDOKBIT_OFFSET ( `SENDBIT_OFFSET + 1)
+
+// possible packet types
+
+
+// request from compute node for data
+`define TYPE_REQUEST        7'b0000000
+
+// response from memory to caching node
+`define TYPE_RESPONSE_ADDR  7'b0000001
+
+// response from memory to compute node
+`define TYPE_RESPONSE_DATA  7'b0000010
+
+// request from home router to core containing data
+`define TYPE_C_REQ          7'b0000011
+
+// write request from compute node to memory 
+`define TYPE_WRITE          7'b0000100
+
+// we found an outstanding request and it is redirected to requesting node
+`define TYPE_OUTSTANDING    7'b0000101
+
+// Final packet to notify the memory controller that the core finishes its execution
+`define TYPE_DONE           7'b0000110
+
+///////////////////////////////////////////////////////////////////////////////
+// Cache params
+///////////////////////////////////////////////////////////////////////////////
+
+`define DIR_READEN_WIDTH (`NUM_INPUTS)               // number of readenable bits
+`define TOTAL_RESULT_SIZE (`DESTWIDTH * `NUM_INPUTS) // Size of results from cache lookup ( destintation addresses ) 
+
+// An address is broken into fields as follows: 
+// [tag] [index] [router id] [offset]
+// 
+// We assume 32bit addresses and byte addressability, thus: 
+// 
+// offset    = 2 bits
+// router_id = log2(# routers)
+// index     = log2(directory depth)
+// tag       = remaing bits: 32 - (offset_width - ROUTER_ID_WIDTH - INDEX_WIDTH)
+
+// directory width params
+`define OFFSET_WIDTH    2
+`define ROUTER_ID_WIDTH {{router_id_width}}   // LOG2(`NUM_ROUTER_NODES) + 1
+
+// Note: Has 1 extra bit, meant to store the top bit of what used to be the index. 
+// Index has been shifted down by one bit in order to account for the potential of multiple addresses mapping to 
+// same index due to the modulous taken of the ROUTER_ID field
+`define TAG_WIDTH       (`DATA_AWIDTH - `OFFSET_WIDTH - `ROUTER_ID_WIDTH - `INDEX_WIDTH + 1)
+
+// directory offset params
+`define OFFSET_LOW    (0)
+`define ROUTER_ID_LOW (`OFFSET_WIDTH)
+
+// subtract one IFF there is an odd number of routers, else don't 
+`define INDEX_LOW     (`ROUTER_ID_LOW + `ROUTER_ID_WIDTH - 1)
+`define TAG_LOW       (`INDEX_LOW + `INDEX_WIDTH)
+
+// Directory params: aggregate widths
+`define TOTAL_ROUTER_ID_WIDTH (`ROUTER_ID_WIDTH * `NUM_INPUTS)
+`define TOTAL_INDEX_WIDTH (`INDEX_WIDTH * `NUM_INPUTS)
+`define TOTAL_TAG_WIDTH  (`NUM_INPUTS * `TAG_WIDTH)
+
+//  PARAMS FOR MATMUL
+`define NUM_BRAMS {{data_bram_ports|length}}
+// BRAM depth
+`define CORE_BRAM_DEPTH {{bram_size}}
+
+// index is log2(BRAM depth) = log2(256)
+`define BRAM_INDEXWIDTH  {{bram_addr_width}}
+
+// tag size is the entire address
+`define BRAM_TAGWIDTH (`DATA_AWIDTH) 
+`define BRAM_TAG_TAGWIDTH              (`BRAM_TAGWIDTH)
+// tag field now is [1, {address}]
+`define BRAM_TAG_DATAWIDTH             (1 + `BRAM_TAG_TAGWIDTH)
+`define BRAM_TAG_ADDRWIDTH             (`BRAM_INDEXWIDTH)
+
+// Values for DATA brams: 
+`define BRAM_DATA_DATAWIDTH            (`DATA_DWIDTH)
+`define BRAM_DATA_ADDRWIDTH            (`BRAM_INDEXWIDTH)
+
+`define NARB_BUF_DEPTH       4
+`define NARB_LOG2_BUF_DEPTH  2
+
+
+`define PKT_TYPE      `FIELD(`TYPE_OFFSET,     `DATA_TYPEWIDTH)
+`define PKT_SRC       `FIELD(`SRC_OFFSET,      `DATA_SRCWIDTH )
+`define PKT_DEST      `FIELD(`DEST_OFFSET,     `DESTWIDTH )
+`define PKT_DATA      `FIELD(`DATA_D_OFFSET,   `DATA_DWIDTH )
+`define PKT_ADDR      `FIELD(`DATA_A_OFFSET ,  `DATA_AWIDTH)
+`define PKT_NHOP      `FIELD(`NEXTHOP_OFFSET , `NEXTHOPWIDTH)
+`define PKT_LASTBIT   `LASTBIT_OFFSET
+`define PKT_SENDBIT   `SENDBIT_OFFSET
+`define PKT_SENDOKBIT `SENDOKBIT_OFFSET
+
+// tag, index fields within an address
+`define ADDR_TAG   (`DATA_AWIDTH - 1) -: (`BRAM_TAG_TAGWIDTH)
+
+`define HOME_NODE_MAPPING(addr, NODE_ID) ((1 * (addr[`ROUTER_ID_LOW + `ROUTER_ID_WIDTH - 1 : `ROUTER_ID_LOW])) % (`NUM_ROUTER_NODES))
+
+`define FACTOR_SIZE 3

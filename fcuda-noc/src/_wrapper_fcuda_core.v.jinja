@@ -1,0 +1,394 @@
+//============================================================================//
+//    FCUDA
+//    Copyright (c) <2016> 
+//    <University of Illinois at Urbana-Champaign>
+//    <University of California at Los Angeles> 
+//    All rights reserved.
+// 
+//    Developed by:
+// 
+//        <ES CAD Group & IMPACT Research Group>
+//            <University of Illinois at Urbana-Champaign>
+//            <http://dchen.ece.illinois.edu/>
+//            <http://impact.crhc.illinois.edu/>
+// 
+//        <VAST Laboratory>
+//            <University of California at Los Angeles>
+//            <http://vast.cs.ucla.edu/>
+// 
+//        <Hardware Research Group>
+//            <Advanced Digital Sciences Center>
+//            <http://adsc.illinois.edu/>
+//============================================================================//
+
+`include "noc_pkt.vh"
+`timescale 1 ns / 1 ps 
+
+module fcuda_core (
+  input  wire [`IO_WIDTH-1:0] noc_to_core,
+  output wire [`IO_WIDTH-1:0]  core_to_noc,
+  input wire clk,
+  input wire rst,
+
+  //Scalar ports
+  {%- for x in scalar_ports %}
+  input wire [{{(x.width - 1)}} : 0] {{x.name}},
+  {%- endfor %}
+
+  input wire ap_clk,
+  input wire ap_rst,
+  input wire ap_start,
+  output wire ap_done,
+  output wire ap_idle
+);
+
+parameter [`NEXTHOPWIDTH * `ROUTE_WIRE_WIDTH - 1 : 0] ROUTE = {`NEXTHOPWIDTH * `ROUTE_WIRE_WIDTH{1'b0}};
+parameter [`DESTWIDTH - 1 : 0] NODE_ID                      = {`DESTWIDTH{1'b0}};
+parameter [`DESTWIDTH - 1 : 0 ] MEM_ADDRESS                 = {`DESTWIDTH{1'b0}};
+
+wire memport_req_din;        // input
+wire memport_req_write;      // input
+wire memport_rsp_read;       // input
+wire [31:0] memport_address; // input
+wire [31:0] memport_dataout; // input
+wire [31:0] memport_size;    // input
+wire memport_req_full_n;     // output
+//wire memport_rsp_empty_n;    // output
+reg memport_rsp_empty_n;    // output
+wire  [31:0] memport_datain; // output
+reg  [31:0] memport_datain_reg = 0; // output
+
+// connect AutoESL core to arbiter
+wire [`IO_WIDTH-1:0] core_to_arb;
+
+// connect bram controller to arbiter
+wire [`IO_WIDTH-1:0] bcont_to_arb;
+
+
+// wires for BRAM controller connections
+wire [`NUM_BRAMS * `BRAM_TAG_DATAWIDTH - 1 : 0] core_tag_bram_input;
+wire [`NUM_BRAMS * `BRAM_TAG_TAGWIDTH  - 1 : 0] core_tag_bram_output;
+wire [`NUM_BRAMS - 1 : 0]                       core_tag_bram_valid_output;
+wire [`NUM_BRAMS * `BRAM_TAG_ADDRWIDTH - 1 : 0] core_tag_bram_addr;
+wire [`NUM_BRAMS - 1 : 0]                       core_tag_bram_we;
+
+// connect core to BRAMs
+wire [`NUM_BRAMS - 1 : 0]                        core_data_bram_we;
+wire [`NUM_BRAMS * `BRAM_DATA_ADDRWIDTH - 1 : 0] core_data_bram_addr;
+wire [`NUM_BRAMS * `BRAM_DATA_DATAWIDTH - 1 : 0] core_data_bram_input;
+wire [`NUM_BRAMS * `BRAM_DATA_DATAWIDTH - 1 : 0] core_data_bram_output;
+
+// connect to BRAM Controller
+wire [`NUM_BRAMS * `BRAM_TAG_DATAWIDTH  - 1 : 0] bram_tag_input;
+wire [`NUM_BRAMS * `BRAM_TAG_ADDRWIDTH - 1 : 0] bram_tag_rd_addr_out;
+wire [`NUM_BRAMS * `BRAM_DATA_DATAWIDTH - 1 : 0] bram_data_input;
+wire [`NUM_BRAMS * `BRAM_DATA_ADDRWIDTH - 1 : 0] bram_data_addr_out;
+
+{{module_name}} core(
+
+  //Scalar ports
+  {%- for x in scalar_ports %}
+  .{{x.name}}({{x.name}}),
+  {%- endfor %}
+
+  //Bus ports
+  .memport_p0_req_din(memport_req_din),
+  .memport_p0_req_full_n(memport_req_full_n),
+  .memport_p0_req_write(memport_req_write),
+  .memport_p0_rsp_empty_n(memport_rsp_empty_n),
+  .memport_p0_rsp_read(memport_rsp_read),
+  .memport_p0_address(memport_address),
+  //.memport_p0_datain(memport_datain),
+  .memport_p0_datain(memport_datain_reg),
+  .memport_p0_dataout(memport_dataout),
+  .memport_p0_size(memport_size),
+
+  //BRAM ports
+  {%- for x in data_bram_ports %}
+  .{{x.name}}_address0(core_data_bram_addr[({{x.index}} + 1) * `BRAM_DATA_ADDRWIDTH - 1 : ({{x.index}}) * `BRAM_DATA_ADDRWIDTH]),
+  .{{x.name}}_we0(core_data_bram_we[{{x.index}}]),
+  .{{x.name}}_d0(core_data_bram_input[({{x.index}} + 1) * `BRAM_DATA_DATAWIDTH - 1 : ({{x.index}}) * `BRAM_DATA_DATAWIDTH]),
+  .{{x.name}}_q0(core_data_bram_output[({{x.index}} + 1) * `BRAM_DATA_DATAWIDTH - 1 : ({{x.index}}) * `BRAM_DATA_DATAWIDTH]),
+  .{{x.name}}_tag_address0(core_tag_bram_addr[({{x.index}} + 1) * `BRAM_TAG_ADDRWIDTH - 1 : ({{x.index}}) * `BRAM_TAG_ADDRWIDTH]),
+  .{{x.name}}_tag_we0(core_tag_bram_we[{{x.index}}]),
+  .{{x.name}}_tag_d0(core_tag_bram_output[({{x.index}} + 1) * `BRAM_TAG_TAGWIDTH - 1 : ({{x.index}}) * `BRAM_TAG_TAGWIDTH]),
+  {%- endfor %}
+
+  .ap_clk(ap_clk),
+  .ap_rst(ap_rst),
+  .ap_start(ap_start),
+  .ap_done(ap_done),
+  .ap_idle(ap_idle)
+);
+
+wire [`NUM_BRAMS * `BRAM_TAG_ADDRWIDTH - 1 : 0] core_tag_bram_addr_refined;
+wire [`NUM_BRAMS * `BRAM_TAG_TAGWIDTH - 1 : 0] core_tag_bram_output_refined;
+
+genvar i;
+generate
+  for (i = 0; i < `NUM_BRAMS; i = i + 1) begin
+    wire [`BRAM_TAG_ADDRWIDTH - 1 : 0] index = core_tag_bram_addr[(i + 1) * `BRAM_TAG_ADDRWIDTH - 1 -: `BRAM_TAG_ADDRWIDTH];
+    assign core_tag_bram_addr_refined[(i + 1) * `BRAM_TAG_ADDRWIDTH - 1 -: `BRAM_TAG_ADDRWIDTH] = ((|index) === 1'bx) ? {`BRAM_TAG_ADDRWIDTH{1'b0}} : index;
+    wire [`BRAM_TAG_TAGWIDTH - 1 : 0] index1 = core_tag_bram_output[(i + 1) * `BRAM_TAG_TAGWIDTH - 1 -: `BRAM_TAG_TAGWIDTH];
+    assign core_tag_bram_output_refined[(i + 1) * `BRAM_TAG_TAGWIDTH - 1 -: `BRAM_TAG_TAGWIDTH] = ((|index1) === 1'bx) ? {`BRAM_TAG_TAGWIDTH{1'b0}} : index1;
+  end
+endgenerate
+
+always @(noc_to_core) begin
+  $display("[%m] at %t, NOC_TO_CORE=%h", $time, noc_to_core);
+end
+
+always @(core_to_noc or core_to_arb or bcont_to_arb) begin
+  $display("[%m] at %t, CORE_TO_NOC=%h, core_to_arb=%h, bcont_to_arb=%h", $time, core_to_noc, core_to_arb, bcont_to_arb);
+end
+
+//Experimental Burst-mode
+integer custom_burst_length = 1;
+
+reg [31:0] count_burst = 0;
+reg [31:0] size;
+reg memport_req_write1 = 0;
+reg memport_req_write_reg = 0;
+reg [31:0] address_read;
+reg [31:0] address_write;
+wire [31:0] address1;
+reg [`NUM_BRAMS * `BRAM_TAG_TAGWIDTH - 1 : 0] core_tag_bram_output_reg0 = 0;
+reg [`NUM_BRAMS * `BRAM_TAG_TAGWIDTH - 1 : 0] core_tag_bram_output_reg1 = 0;
+reg [`NUM_BRAMS * `BRAM_TAG_ADDRWIDTH - 1 : 0] core_tag_bram_addr_reg0 = 0;
+reg [`NUM_BRAMS * `BRAM_TAG_ADDRWIDTH - 1 : 0] core_tag_bram_addr_reg1 = 0;
+
+reg memport_req_din_reg;
+reg [31:0] memport_dataout_reg;
+always @(posedge clk) begin
+  memport_req_din_reg <= memport_req_din;
+  memport_dataout_reg <= memport_dataout;
+end
+
+//count the number of writes in a burst length
+reg[31:0] count_write = 0;
+always @(posedge clk) begin
+  if (size === 1'b1) 
+    count_write <= 0;
+  else if (memport_req_din_reg === 1'b1 && memport_req_write1 === 1'b1)
+    count_write <= count_write + 1;
+  else if (count_write == size)
+    count_write <= 0;
+end
+
+always @(posedge clk) begin
+  if (memport_req_write === 1'b1 && ((|memport_size) !== 1'bx))
+    size <= memport_size;
+end
+
+//count the number of received data
+reg[31:0] count_receive = 0;
+always @(posedge clk) begin
+  if (memport_rsp_read === 1'b1) begin
+    count_receive <= count_receive + 1;
+  end 
+  else if (count_receive === custom_burst_length)
+    count_receive <= 0;
+end
+
+//count the number of request data
+reg[31:0] count_send = 0;
+always @(posedge clk) begin
+  if (size === 1'b1)
+    count_send <= 1'b0;
+  else if (memport_req_write1 === 1'b1)
+    count_send <= count_send + 1;
+  else if (count_send == size)
+    count_send <= 0;
+  else if (count_send == custom_burst_length)
+    count_send <= 0;
+end
+
+//count the number of request done so far
+reg[31:0] count_done = 0;
+always @(posedge clk) begin
+  //We do not use count_done either when burst is not used, or when the core is writing
+  if (size === 1'b1)
+    count_done <= 0;
+  else if (count_done == size)
+    count_done <= 0;
+  else if (count_receive == custom_burst_length)
+    count_done <= count_done + custom_burst_length;
+end
+
+always @(posedge clk) begin
+  //Either there is a read/write signal enable, or the burst transfer has not finished
+  if (memport_req_write === 1'b1 || (size > 1 && count_receive == custom_burst_length && count_done < size - custom_burst_length)) begin
+    memport_req_write1 <= 1'b1;
+  end
+  else if (size === 1'b1) begin
+    memport_req_write1 <= 1'b0;
+  end
+  else if (count_send == custom_burst_length - 1 || count_write == size - 1 || memport_req_full_n === 1'b0) begin
+    memport_req_write1 <= 1'b0;
+  end
+end
+
+always @(posedge clk) begin
+  if ((memport_req_write === 1'b1) && (memport_req_din === 1'b0) && (|(memport_address) !== 1'bx))
+    address_read <= memport_address;
+end
+
+always @(posedge clk) begin
+  if ((memport_req_write === 1'b1) && (memport_req_din === 1'b1) && (|(memport_address) !== 1'bx))
+    address_write <= memport_address;
+end
+
+assign address1 = (memport_req_din_reg === 1'b1 && memport_req_write1 === 1'b1) ? (address_write + count_write) : (address_read + count_done + count_send);
+
+wire rd_valid;
+
+always @(posedge clk) begin
+  if (rd_valid === 1'b1) begin
+    memport_rsp_empty_n <= 1;
+    memport_datain_reg <= memport_datain;
+  end
+  else if (memport_rsp_read === 1'b1) begin
+    memport_rsp_empty_n <= 0;
+  end
+end
+
+//Base address
+always @(*) begin
+  if ((|(core_tag_bram_we)) === 1'b1) begin
+    core_tag_bram_output_reg0 = core_tag_bram_output_refined;
+    core_tag_bram_addr_reg0 = core_tag_bram_addr_refined;
+  end
+end
+
+always @(posedge clk) begin
+  if ((|(core_data_bram_we)) === 1'b1) begin
+    $display("[%m] CHECK WRITE BRAM core_data_bram_we=%b, core_tag_bram_output=%h, core_tag_bram_output_refined=%h, core_tag_bram_output_reg0=%h, core_tag_bram_output_reg1=%h, core_tag_bram_output_byte_addr=%h, core_data_bram_addr=%h, core_data_bram_input=%h, time=%t",
+      core_data_bram_we, core_tag_bram_output, core_tag_bram_output_refined, core_tag_bram_output_reg0, core_tag_bram_output_reg1, core_tag_bram_output_byte_addr, core_data_bram_addr, core_data_bram_input, $time);
+  end
+end
+
+generate
+  for (i = 0; i < `NUM_BRAMS; i = i + 1) begin
+    always @(*) begin
+      core_tag_bram_output_reg1[(i + 1) * `BRAM_TAG_TAGWIDTH - 1 -: `BRAM_TAG_TAGWIDTH] = 
+      (size === 1'b1) ? core_tag_bram_output_refined[(i + 1) * `BRAM_TAG_TAGWIDTH - 1 -: `BRAM_TAG_TAGWIDTH] : 
+            (core_tag_bram_output_reg0[(i + 1) * `BRAM_TAG_TAGWIDTH - 1 -: `BRAM_TAG_TAGWIDTH] + count_done + count_receive - 1);
+      core_tag_bram_addr_reg1[(i + 1) * `BRAM_TAG_ADDRWIDTH - 1 -: `BRAM_TAG_ADDRWIDTH] = 
+      (size === 1'b1) ? core_tag_bram_addr_refined[(i + 1) * `BRAM_TAG_ADDRWIDTH - 1 -: `BRAM_TAG_ADDRWIDTH] :
+              (core_tag_bram_addr_reg0[(i + 1) * `BRAM_TAG_ADDRWIDTH - 1 -: `BRAM_TAG_ADDRWIDTH] + count_done + count_send - 1);
+    end
+  end
+endgenerate
+
+assign core_tag_bram_valid_output = {`NUM_BRAMS{1'b1}};
+
+wire [`NUM_BRAMS * `BRAM_TAG_TAGWIDTH  - 1 : 0] core_tag_bram_output_byte_addr;
+
+generate
+  for (i = 0; i < `NUM_BRAMS; i = i + 1) begin
+    assign core_tag_bram_output_byte_addr[(i + 1) * `BRAM_TAG_TAGWIDTH - 1 -: `BRAM_TAG_TAGWIDTH] = core_tag_bram_output_reg1[(i + 1) * `BRAM_TAG_TAGWIDTH - 1 -: `BRAM_TAG_TAGWIDTH] << 2;
+  end
+endgenerate
+
+
+ //NoC interfacer:
+ //connect the noc to the core
+ noc_interfacer #(
+   .ROUTE(ROUTE),
+   .MEM_ID(MEM_ADDRESS),
+   .NODE_ID(NODE_ID)
+ ) ni (
+    //.bram_index(bram_index_refined1),
+    .bram_index(core_tag_bram_addr_reg1),
+    .wr_ready(memport_req_full_n),
+    //.rd_valid(memport_rsp_empty_n),
+    .rd_valid(rd_valid),
+    .rd_data(memport_datain),
+    .clk(ap_clk),
+    .rst(ap_rst),
+    .ap_done(ap_done),
+    //.wrNotRd(memport_req_din),
+    .wrNotRd(memport_req_din_reg),
+    //.pe_req(memport_req_write),
+    .pe_req(memport_req_write1),
+    .rd_ack(memport_rsp_read),
+    //.address(memport_address),
+    .address(address1),
+    //.wr_data(memport_dataout),
+    .wr_data(memport_dataout_reg),
+    .size(memport_size),
+    .router_input(noc_to_core),
+    .router_output(core_to_arb)
+    );
+
+  // BRAM Controller
+  bram_controller #(
+    .ROUTE(ROUTE),
+    .MEM_ID(MEM_ADDRESS),
+    .NODE_ID(NODE_ID)
+  ) bc ( 
+    .noc_line_in(noc_to_core),
+    .noc_line_out(bcont_to_arb),
+    .clk(ap_clk),
+    .rst(ap_rst),
+    .bram_tag_input(bram_tag_input),   
+    .bram_tag_rd_addr_out(bram_tag_rd_addr_out),
+    .bram_data_input(bram_data_input),
+    .bram_data_addr_out(bram_data_addr_out)
+    );
+
+  // NoC arbiter
+  narb #(
+  .DATA_WIDTH(`IO_WIDTH),
+  .BUF_DEPTH(`NARB_BUF_DEPTH), 
+  .LOG2_BUF_DEPTH(`NARB_LOG2_BUF_DEPTH), 
+  .VALID_BIT_OFFSET(`SENDBIT_OFFSET)
+  ) n(
+    .clk(ap_clk),
+    .rst(ap_rst),
+    .core_i(core_to_arb),
+    .bcont_i(bcont_to_arb),
+    .noc_o(core_to_noc)
+  );
+
+
+generate
+  for (i = 0; i < `NUM_BRAMS; i = i + 1) begin
+    //tag BRAM
+    bram #(
+      .DATASIZE(`BRAM_TAG_DATAWIDTH),
+      .DEPTH(`CORE_BRAM_DEPTH),
+      .ADDRWIDTH(`BRAM_TAG_ADDRWIDTH)
+    ) tag_bram (
+        .clk(ap_clk),
+        .rst(ap_rst),
+        .we1(core_data_bram_we[i]), //write to the tag BRAM at the same time as data BRAM
+        .we2(1'b0),
+        //.addr1(bram_tag_wr_addr_out[(i + 1) * `BRAM_TAG_ADDRWIDTH - 1 -: `BRAM_TAG_ADDRWIDTH]),
+        .addr1(core_data_bram_addr[(i + 1) * `BRAM_DATA_ADDRWIDTH - 1 -: `BRAM_DATA_ADDRWIDTH]),
+        .addr2(bram_tag_rd_addr_out[(i + 1) * `BRAM_TAG_ADDRWIDTH - 1 -: `BRAM_TAG_ADDRWIDTH]),
+        .di1({core_tag_bram_valid_output[i],
+             core_tag_bram_output_byte_addr[(i + 1) * `BRAM_TAG_TAGWIDTH -1 -: `BRAM_TAG_TAGWIDTH]}),
+        .do2(bram_tag_input[(i + 1) * `BRAM_TAG_DATAWIDTH - 1 -: `BRAM_TAG_DATAWIDTH])
+    );
+
+    //data BRAM
+    bram #(
+      .DATASIZE(`BRAM_DATA_DATAWIDTH),
+      .DEPTH(`CORE_BRAM_DEPTH),
+      .ADDRWIDTH(`BRAM_DATA_ADDRWIDTH)
+    ) data_bram (
+        .clk(ap_clk),
+        .rst(ap_rst),
+        .we1(core_data_bram_we[i]),
+        .we2(1'b0),
+        .addr1(core_data_bram_addr[(i + 1) * `BRAM_DATA_ADDRWIDTH - 1 -: `BRAM_DATA_ADDRWIDTH]),
+        .addr2(bram_data_addr_out[(i + 1) * `BRAM_DATA_ADDRWIDTH - 1 -: `BRAM_DATA_ADDRWIDTH]),
+        .di1(core_data_bram_input[(i + 1) * `BRAM_DATA_DATAWIDTH - 1 -: `BRAM_DATA_DATAWIDTH]),
+        .do1(core_data_bram_output[(i + 1) * `BRAM_DATA_DATAWIDTH - 1 -: `BRAM_DATA_DATAWIDTH]),
+        .do2(bram_data_input[(i + 1) * `BRAM_DATA_DATAWIDTH - 1 -: `BRAM_DATA_DATAWIDTH])
+    );
+  end
+endgenerate
+
+endmodule

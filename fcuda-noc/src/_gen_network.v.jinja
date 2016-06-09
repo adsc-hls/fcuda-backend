@@ -1,0 +1,180 @@
+//============================================================================//
+//    FCUDA
+//    Copyright (c) <2016> 
+//    <University of Illinois at Urbana-Champaign>
+//    <University of California at Los Angeles> 
+//    All rights reserved.
+// 
+//    Developed by:
+// 
+//        <ES CAD Group & IMPACT Research Group>
+//            <University of Illinois at Urbana-Champaign>
+//            <http://dchen.ece.illinois.edu/>
+//            <http://impact.crhc.illinois.edu/>
+// 
+//        <VAST Laboratory>
+//            <University of California at Los Angeles>
+//            <http://vast.cs.ucla.edu/>
+// 
+//        <Hardware Research Group>
+//            <Advanced Digital Sciences Center>
+//            <http://adsc.illinois.edu/>
+//============================================================================//
+
+`timescale 1ns / 1ps
+`include "noc_pkt.vh" 
+
+module gen_network #(
+    parameter FIFO_DATA_WIDTH    = `IO_WIDTH,
+    parameter DEPTH              = {{output_size}},
+    parameter WIDTH              = `IO_WIDTH
+)(
+  input wire ap_clk,
+  input wire ap_rst,
+
+  output wire mem_req_din,
+  input wire mem_req_full_n,
+  output wire  mem_req_write,
+  input wire mem_rsp_empty_n,
+  output wire mem_rsp_read,
+  output wire [31 : 0] mem_address,
+  input wire [{{(data_width - 1)}} : 0] mem_datain,
+  output wire [{{(data_width - 1)}} : 0] mem_dataout,
+  output wire [31 : 0] mem_size,
+
+  //Scalar ports
+  {%- for x in scalar_ports %}
+  input wire [{{(x.width - 1)}} : 0] {{x.name}},
+  {%- endfor %}
+
+  input wire ap_start,
+  output wire ap_ready,
+  output wire ap_done,
+  output wire ap_idle
+); 
+    
+
+localparam NUM_CORES = {{num_cores}};
+reg [31 : 0] clock_counter = 0;
+
+//start signal of memory node
+reg mc_start;
+always @(posedge ap_clk) begin
+  if (ap_rst === 1'b1) begin
+    mc_start <= 1'b0;
+  end
+  else begin
+    if (ap_start === 1'b1)
+      mc_start <= 1'b1;
+  end
+end
+
+//done signal of memory node
+wire mc_done;
+
+//Router wires
+{{router_wires}}
+
+{%- for node in nodes %}
+{%- if node.type == 'router' %}
+//Router nodes
+router_wrap #(
+  .ROUTER_ID(({{node.id}} - `NUM_COMPUTE_NODES)),
+  .PREROUTE({{node.prtables}}),
+  {{node.commented_prtables}}
+  .ACTUAL_ROUTE({{node.rtables}}),
+  {{node.commeted_rtables}}
+  .MEM_ADDRESS(NUM_CORES)
+) r{{node.id}}(
+  .clk(ap_clk),
+  .rst(ap_rst),
+  .router_in(r{{node.id}}_in),
+  .router_out(r{{node.id}}_out));
+
+{%- endif %}
+
+{%- if node.type == 'compute' %}
+//Compute nodes
+fcuda_core #(
+  .ROUTE({{node.rtables}}), 
+  .DEPTH(DEPTH), 
+  .NODE_ID({{node.id}}), 
+  .MEM_ADDRESS(NUM_CORES) 
+) core{{node.id}}_wrap(
+  .clk(ap_clk),
+  .rst(ap_rst),
+  .noc_to_core(node_i_{{node.id}}),
+  .core_to_noc(node_o_{{node.id}}),
+  .num_cores(NUM_CORES),
+  .core_id({{node.id}}),
+
+  {%- for x in scalar_ports %}
+  {%- if x.name != "num_cores" and x.name != "core_id" %}
+  .{{x.name}}({{x.name}}),
+  {%- endif %}
+  {%- endfor %}
+
+  .ap_clk(ap_clk),
+  .ap_rst(ap_rst),
+  .ap_start(ap_start),
+  .ap_done(),
+  .ap_idle()
+);
+
+{%- endif %}
+
+{%- if node.type == 'memory' %}
+//Memory nodes
+mc_full #(
+  .ROUTE({{node.rtables}}),
+  .NUM_CORES(NUM_CORES),
+  .DEPTH(DEPTH),
+  .WIDTH(WIDTH)
+) noc_memory_controller(
+  .aclk(ap_clk),
+  .arst(ap_rst),
+  .mem_req_din(mem_req_din),
+  .mem_req_full_n(mem_req_full_n),
+  .mem_req_write(mem_req_write),
+  .mem_rsp_empty_n(mem_rsp_empty_n),
+  .mem_rsp_read(mem_rsp_read),
+  .mem_address(mem_address),
+  .mem_datain(mem_datain),
+  .mem_dataout(mem_dataout),
+  .mem_size(mem_size),
+
+  .mc_start(mc_start),
+  .mc_done(mc_done),
+
+  .data_to_noc(node_o_{{node.id}}),
+  .noc_to_data(node_i_{{node.id}})
+);
+
+{%- endif %}
+
+{%- endfor %}
+  
+assign ap_done = mc_done;
+reg start_run;
+always @ (posedge ap_clk) begin
+  if (ap_rst === 1'b1) begin
+    clock_counter <= 0;
+    start_run <= 0;
+  end 
+  else begin
+    if (ap_start === 1'b1)
+      start_run <= 1'b1;
+
+    if (start_run === 1'b1)
+      clock_counter <= clock_counter + 1;
+    else
+      clock_counter <= clock_counter;
+
+    if (ap_done === 1'b1) begin
+      $display("All Done at clock cycle= %%d", clock_counter);
+      //$finish;
+    end
+  end
+end
+
+endmodule
