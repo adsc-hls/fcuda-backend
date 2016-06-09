@@ -12,5 +12,5 @@ with the FCUDA C compiler (or front-end) to provide a complete FCUDA system
 
 - There are scripts and documents inside these project directories to help user
 kickoff. More importantly, please also check the relevant publications for better 
-insight on them.
+insight on them (see file: **license.txt**).
 

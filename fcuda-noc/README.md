@@ -16,7 +16,7 @@ instructions to set up the entire flow.
 script will generate necessary files from jinja template for the project.
 - The scripts are tested with Vivado HLS & Vivado Design 2015.3. Please install 
 the respective software version before you use the flow.
-- At this moment, the flows are tested with the board VC709.
+- At this moment, the flow is tested with the board VC709.
 
 ##How to use
 
@@ -96,7 +96,7 @@ in the file.
     do not implement back-pressured signal on this FIFO currently (specifically, 
     **vfifo.v**), so we use the FIFO size as big as necessary. As a side note, the 
     FIFOs at the router inputs/outputs can generate back-pressured signal 
-    (specifically, fifo.v) to notify neighbors' routers to stop sending packets.  
+    (specifically, **fifo.v**) to notify neighbors' routers to stop sending packets.  
     + input\_file & gold\_file: These are the file names of the input file for 
     initializing data and verifying data, respectively. Those files must be put 
     under {benchmark's directory}/noc. The files store the content of the memory 
@@ -307,11 +307,16 @@ Because it also wants to increase the opportunity for data sharing, packing a
 chunk of data to move at a time seems to make that goal prohibitive. Therefore,
 we modified the NOC logic to convert burst-mode at the FCUDA core to standard
 memory transaction at the upper-level module (completing one transaction before
-starting another). Implementing a full-fledged burst-mode is left for future
-work.
+starting another). Currently, the NOC works OK with cores using burst access,
+however, it does not necessarily imply good performance. Implementing a 
+full-fledged burst-mode is left for future work.
 
 - Some other details: a packet takes 3 cycles when traversing through a router.
-If the packet needs to access the directory, it will incur 3 addition cycles.
+If the packet needs to access the directory, it will incur 3 additional cycles.
+However, a packet does not necessarily access the directory of every router
+on its path: it only needs to access the home node's. Hence, the feature 
+"directory bypass" ensures that a packet will bypass directory access of all
+but the home node.
 
 ##References
 
