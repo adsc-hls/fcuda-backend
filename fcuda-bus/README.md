@@ -28,11 +28,13 @@ the respective software version before you use the flow.
 
 ##How to use
 
-- The folder *prepareFile_709/* contains the top level module for simulation, plus
-DDR3 model verilog file and other files from Xilinx. They have been lightly
-modified to initiate the necessary input data in the DDR3 after DDR3 calibration
-is done, so we do not concern about writing another module to initialize data
-for simulation.
+- The directories  *prepareFile_709/* and *src/* contains the top level module 
+for simulation, plus DDR3 model verilog (in jinja template format) file and 
+other files from Xilinx. They have been lightly modified to initiate the necessary 
+input data in the DDR3 after DDR3 calibration is done, so we do not need to concern 
+about writing another module to initialize data for simulation. A TCL script 
+(in jinja template format) is provided to automate the generation of the AXI bus-based
+system.
 
 - The script **gen_hb.py** is used for generating a Hierarchical bus -based system. 
 Before using the script, please source the script **env_vars.sh** at the top level
@@ -162,8 +164,11 @@ all the necessary data is gathered, the script uses linear regression to find
 the coefficients of the respective models. The script thereby loads the template
 **_dse.cpp.jinja** to inject all the coefficents into it to generate the CPP
 file **dse.cpp**. This file then gets compiled and executed. It performs
-exhaustive or binary search on myriads of possible system configurations 
+exhaustive or binary search on many possible system configurations 
 based on the constructed model to find the optimum system configuration.
+Specifically, a system configuration includes core configuration, such
+as the degree of unrolling, the degree of memory partitioning as well
+as number of cores per tile and number of tiles.
 
 ##References
 
