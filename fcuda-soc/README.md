@@ -1,4 +1,4 @@
-#FCUDA SoC Flow
+#FCUDA Sytem-on-Chip flow (FCUDA SOC)
 
 ##Introduction
 - This repository contains scripts for the automation of the FCUDA SoC platform. It calls the CUDA-to-C

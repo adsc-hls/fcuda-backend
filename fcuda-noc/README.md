@@ -1,4 +1,4 @@
-#FCUDA Network-on-Chip Flow
+#FCUDA Network-on-Chip Flow (FCUDA NOC)
 
 ##Introduction
 - This repository contains Verilog source files of the NoC backend logic as
