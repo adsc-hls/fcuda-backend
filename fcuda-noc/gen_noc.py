@@ -189,19 +189,19 @@ def main(argv):
         json_obj['directory_index'] = (json_obj['directory_size'] - 1).bit_length()
 
     if 'input_file' not in json_obj or \
-     not os.path.isfile('%s/noc/%s' % (benchmark_dir, json_obj['input_file'])):
+     not os.path.isfile('%s/sim_data/%s' % (benchmark_dir, json_obj['input_file'])):
         print "ERROR: Could not find input test file."
         sys.exit(1)
     if 'gold_file' not in json_obj or \
-     not os.path.isfile('%s/noc/%s' % (benchmark_dir, json_obj['gold_file'])):
+     not os.path.isfile('%s/sim_data/%s' % (benchmark_dir, json_obj['gold_file'])):
         print "ERROR: Could not find gold test file."
         sys.exit(1)
 
     command = "cp -R %s/src %s/prj_files" % (noc_dir, project_dir)
     run_command(command, 1)
 
-    input_file = '%s/noc/%s' % (benchmark_dir, json_obj['input_file'])
-    gold_file = '%s/noc/%s' % (benchmark_dir, json_obj['gold_file'])
+    input_file = '%s/sim_data/%s' % (benchmark_dir, json_obj['input_file'])
+    gold_file = '%s/sim_data/%s' % (benchmark_dir, json_obj['gold_file'])
     command = "cp %s %s/prj_files" % (input_file, project_dir)
     run_command(command, 1)
     command = "cp %s %s/prj_files" % (gold_file, project_dir)

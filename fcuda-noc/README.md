@@ -99,7 +99,7 @@ in the file.
     (specifically, **fifo.v**) to notify neighbors' routers to stop sending packets.  
     + input\_file & gold\_file: These are the file names of the input file for 
     initializing data and verifying data, respectively. Those files must be put 
-    under {benchmark's directory}/noc. The files store the content of the memory 
+    under {benchmark's directory}/sim_data. The files store the content of the memory 
     data before and after kernel's execution and can be generated using the C 
     program in the benchmark's directory.  
     + scalar values: this field provides a list of scalars and their corresponding 
