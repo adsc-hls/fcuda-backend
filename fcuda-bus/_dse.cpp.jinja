@@ -1,0 +1,1216 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <iostream>
+#include <limits>
+#include <math.h>
+#include <list>
+#include <vector>
+#include <limits>
+#include <assert.h>
+#include <string>
+#include <cstring>
+#include <cassert>
+#include <iostream>
+#include <fstream>
+using namespace std;
+/*
+     Given a design, evaluate it by collect its various metrics:
+*/
+typedef struct config
+{
+  int id;       // configuration ID
+  std::pair<int, int> tile;     // Y# x X# of tiles
+  int core;     // # of core.
+  int unroll;   // # of unroll.
+  int mem;      // # of mem.
+
+  long cycle;    // clock cycles.
+  long transfer_cycle;
+  long tripcount;
+  int dsp;      // # of dsp.
+  int bram;     // # of bram.
+  int lut;      // # of lut.
+  int FF;      // # of reg.
+  int slice;    // # of slice.
+  double period; // clock period
+  double com_latency;
+  double mem_latency;
+  double latency; // execution latency
+} config;
+
+typedef struct result
+{
+  long cycle;    // clock cycles.
+  int dsp;      // # of dsp.
+  int bram;     // # of bram.
+  int lut;      // # of lut.
+  int FF;      // # of reg.
+  int slice;    //TODO(Ying): need to use.
+} result;
+
+///*
+// Platform info
+#define PLATFORM_SLICE_ROWS {{platform_height}}
+#define PLATFORM_SLICE_COLS {{platform_width}}
+#define PLATFORM_BRAM_ROWS {{platform_bram_height}}
+#define PLATFORM_BRAM_COLS {{platform_bram_width}}
+#define PLATFORM_DSP_ROWS {{platform_dsp_height}}
+#define PLATFORM_DSP_COLS {{platform_dsp_width}}
+#define PLATFORM_FF_NUM {{platform_ff_num}}
+#define PLATFORM_LUT_NUM {{platform_lut_num}}
+
+// Benchmark models' coefficients
+// SLICE
+{%- for i in range(slices_coeffs|length) %}
+#define APP_SLICE_C{{i}} {{slices_coeffs[i]}}
+{%- endfor %}
+
+// LUT
+{%- for i in range(lut_coeffs|length) %}
+#define APP_LUT_C{{i}} {{lut_coeffs[i]}}
+{%- endfor %}
+
+// FF
+{%- for i in range(ff_coeffs|length) %}
+#define APP_FF_C{{i}} {{ff_coeffs[i]}}
+{%- endfor %}
+
+// BRAM
+{%- for i in range(bram_coeffs|length) %}
+#define APP_BRAM_C{{i}} {{bram_coeffs[i]}}
+{%- endfor %}
+
+// DSP
+{%- for i in range(dsp_coeffs|length) %}
+#define APP_DSP_C{{i}} {{dsp_coeffs[i]}}
+{%- endfor %}
+
+// Frequency
+{%- for i in range(freq_coeffs|length) %}
+#define APP_FREQ_C{{i}} {{freq_coeffs[i]}}
+{%- endfor %}
+
+// Mem latency
+{%- for i in range(mem_coeffs|length) %}
+#define APP_TRANSFER_C{{i}} {{mem_coeffs[i]}}
+{%- endfor %}
+
+#define APP_UNROLL_MAX {{app_unroll_max}}
+#define APP_THREADBLOCK_NUM {{app_threadblock_num}}
+#define APP_TASK_ITER {{app_task_iter}}
+//*/
+
+/*
+// Platform info
+#define PLATFORM_SLICE_ROWS 500
+#define PLATFORM_SLICE_COLS 221
+#define PLATFORM_BRAM_ROWS 100
+#define PLATFORM_BRAM_COLS 19
+#define PLATFORM_DSP_ROWS 200
+#define PLATFORM_DSP_COLS 18
+#define PLATFORM_FF_NUM 866400
+#define PLATFORM_LUT_NUM 433200
+
+// Benchmark models' coefficients
+// Slice
+#define APP_SLICE_C0 -243.4
+#define APP_SLICE_C1 657.7
+#define APP_SLICE_C2 0.8
+#define APP_SLICE_C3 79.7
+#define APP_SLICE_C4 5.5
+#define APP_SLICE_C5 5811.3
+// LUT
+#define APP_LUT_C0 2780
+#define APP_LUT_C1 2425
+#define APP_LUT_C2 -3
+#define APP_LUT_C3 226
+#define APP_LUT_C4 16
+#define APP_LUT_C5 13112
+// FF
+#define APP_FF_C0 3294.5
+#define APP_FF_C1 2295.2
+#define APP_FF_C2 21.4
+#define APP_FF_C3 231.3
+#define APP_FF_C4 11.3
+#define APP_FF_C5 9797.4
+// BRAM
+#define APP_BRAM_C0 11.9021
+#define APP_BRAM_C1 1.8387
+#define APP_BRAM_C2 0.4074
+#define APP_BRAM_C3 2.3107
+#define APP_BRAM_C4 -0.1496
+#define APP_BRAM_C5 -12.6417
+// DSP
+#define APP_DSP_C0 0.3380
+#define APP_DSP_C1 11.1628
+#define APP_DSP_C2 1.1667
+#define APP_DSP_C3 5.6148
+#define APP_DSP_C4 0.1117
+#define APP_DSP_C5 0.2142
+// Frequency
+#define APP_FREQ_C0 6.2992
+#define APP_FREQ_C1 0.0075
+// Transfer latency
+#define APP_TRANSFER_C0 1629.6
+#define APP_TRANSFER_C1 127.8
+#define APP_TRANSFER_C2 193.7
+
+#define APP_UNROLL_MAX 16
+#define APP_THREADBLOCK_NUM 2
+#define APP_TASK_ITER 64
+*/
+#define PROFILE_CYC
+
+#define MAX_UNROLL 7
+#define MAX_FILE_LENGTH 100
+#define MAX_NUM_UNROLL 128+1
+
+
+int ap_profile[MAX_UNROLL][MAX_UNROLL];
+
+int ap_profile_mm_int[MAX_UNROLL][MAX_UNROLL] = {
+  {25121, 0, 0, 0, 0, 0, 0},
+  {16657, 12561, 0, 0, 0, 0, 0},
+  {12425, 8329, 6281, 0, 0, 0, 0},
+  {10309, 6213, 4165, 3141, 0, 0, 0},
+  {9251, 5155, 3107, 2083, 1571, 0, 0},
+  {0, 0, 0, 0, 0, 0, 0},
+  {0, 0, 0, 0, 0, 0, 0}};
+
+//AXI Tile (without clock domain sync)
+//0: Slice, 1: LUT, 2: FF, 3: BRAM, 4: DSP
+double axi_interconn_lv1[16][5] = {
+  {218, 282, 651, 1.5, 0},
+  {683, 1082, 2071, 4.5, 0},
+  {908, 1469, 2667, 5, 0},
+  {1030, 1773, 3249, 5.5, 0},
+  {1250, 2257, 3845, 6, 0},
+  {1430, 2579, 4427, 6.5, 0},
+  {1681, 3113, 5015, 7, 0},
+  {1856, 3435, 5597, 7.5, 0},
+  {2012, 3854, 6187, 8, 0},
+  {2181, 4243, 6769, 8.5, 0},
+  {2374, 4725, 7325, 9, 0},
+  {2546, 5098, 7933, 9.5, 0},
+  {2697, 5326, 8519, 10, 0},
+  {2967, 5977, 9112, 10.5, 0},
+  {3120, 6334, 9695, 11, 0},
+  {3348, 6766, 10273, 11.5, 0}}; 
+
+// AXI with clock domain sync
+//0: Slice, 1: LUT, 2: FF, 3: BRAM, 4: DSP
+double axi_interconn_lv2[16][5] = {
+  {207, 282, 651, 1.5, 0},
+  {1003, 1422, 2998, 4.5, 0},
+  {1148, 1808, 3600, 5, 0},
+  {1345, 2112, 4182, 5.5, 0},
+  {1539, 2596, 4784, 6, 0},
+  {1723, 2919, 5336, 6.5, 0},
+  {1958, 3452, 5954, 7, 0},
+  {2080, 3775, 6536, 7.5, 0},
+  {2279, 4191, 7132, 8, 0},
+  {2538, 4580, 7714, 8.5, 0},
+  {2695, 5071, 8310, 9, 0},
+  {2873, 5436, 8878, 9.5, 0},
+  {3018, 5665, 9464, 10, 0},
+  {3234, 6312, 10057, 10.5, 0},
+  {3404, 6673, 10640, 11, 0},
+  {3674, 7104, 11218, 11.5, 0}}; 
+
+#define DEBUG
+#undef  DEBUG
+
+config best_config;
+std::list<config>allConfigs;
+std::list<config>binaryConfigs;
+std::vector<std::pair<int, int> > dev_tiles;  // Tile configurations (Y, X)
+
+int devFFNum, devSliceNum, devLutNum, devBramNum, devDspNum, devSliceX, devSliceY;
+double appSliceC0, appSliceC1, appSliceC2, appSliceC3, appSliceC4, appSliceC5;
+double appFFC0, appFFC1, appFFC2, appFFC3, appFFC4, appFFC5;
+double appLutC0, appLutC1, appLutC2, appLutC3, appLutC4, appLutC5;
+double appBramC0, appBramC1, appBramC2, appBramC3, appBramC4, appBramC5;
+double appDspC0, appDspC1, appDspC2, appDspC3, appDspC4, appDspC5;
+double appTransferC0, appTransferC1, appTransferC2, appTransferC3;
+
+int appMaxUnroll, appThreadBlkNum;
+
+int taskIter;
+int iterNum, NumTransBitPerBlock, NumArrays, InitialBits;
+int block_cycle[MAX_NUM_UNROLL][MAX_NUM_UNROLL];
+
+//HERE
+int MemBound = 1;
+char hls_bench_name[MAX_FILE_LENGTH] = "cp";
+char fcuda_bench_name[MAX_FILE_LENGTH] = "cp";
+char fcuda_bench_dir[MAX_FILE_LENGTH] = "/home/nqdtan/fcuda/benchmarks/cp";
+char hls_bench_dir[MAX_FILE_LENGTH] = "/home/nqdtan/Vivado_FCUDA/cp";
+
+
+void arrayAssignHelper(int A[][MAX_UNROLL], int B[][MAX_UNROLL]) {
+  for (int x = 0; x < MAX_UNROLL; x++)
+    for (int y = 0; y < MAX_UNROLL; y++)
+      A[x][y] = B[x][y];
+}
+
+void initialize() {
+
+  // all tile configuration we want to examine
+  // num_tiles = first * second <= 16 since
+  // AXI interconnect accommodates up to 16 ports
+  dev_tiles.push_back(std::pair<int, int>(1,1));
+  dev_tiles.push_back(std::pair<int, int>(2,1));
+  dev_tiles.push_back(std::pair<int, int>(2,2));
+  dev_tiles.push_back(std::pair<int, int>(3,1));
+  dev_tiles.push_back(std::pair<int, int>(3,2));
+  dev_tiles.push_back(std::pair<int, int>(3,3));
+  dev_tiles.push_back(std::pair<int, int>(4,1));
+  dev_tiles.push_back(std::pair<int, int>(4,2));
+  dev_tiles.push_back(std::pair<int, int>(4,3));
+  dev_tiles.push_back(std::pair<int, int>(4,4));
+  dev_tiles.push_back(std::pair<int, int>(5,1));
+  dev_tiles.push_back(std::pair<int, int>(5,2));
+  dev_tiles.push_back(std::pair<int, int>(5,3));
+
+  //dev_tiles.push_back(std::pair<int, int>(6,1));
+  //dev_tiles.push_back(std::pair<int, int>(6,2));
+  //dev_tiles.push_back(std::pair<int, int>(1,6));
+  //dev_tiles.push_back(std::pair<int, int>(2,6));
+  //dev_tiles.push_back(std::pair<int, int>(7,1));
+  //dev_tiles.push_back(std::pair<int, int>(7,2));
+  //dev_tiles.push_back(std::pair<int, int>(1,7));
+  //dev_tiles.push_back(std::pair<int, int>(2,7));
+
+  dev_tiles.push_back(std::pair<int, int>(1,2));
+  dev_tiles.push_back(std::pair<int, int>(1,3));
+  dev_tiles.push_back(std::pair<int, int>(1,4));
+  dev_tiles.push_back(std::pair<int, int>(1,5));
+  dev_tiles.push_back(std::pair<int, int>(2,3));
+  dev_tiles.push_back(std::pair<int, int>(2,4));
+  dev_tiles.push_back(std::pair<int, int>(2,5));
+  dev_tiles.push_back(std::pair<int, int>(3,4));
+  dev_tiles.push_back(std::pair<int, int>(3,5));
+
+  devSliceX = (int)PLATFORM_SLICE_ROWS;
+  devSliceY = (int)PLATFORM_SLICE_COLS;
+  devFFNum = (int)PLATFORM_FF_NUM;
+  devLutNum = (int)PLATFORM_LUT_NUM;
+  devBramNum = (int)(PLATFORM_BRAM_ROWS * PLATFORM_BRAM_COLS);
+  devDspNum = (int)(PLATFORM_DSP_COLS * PLATFORM_DSP_ROWS);
+  devSliceNum = (int)(PLATFORM_SLICE_COLS * PLATFORM_SLICE_ROWS);
+
+  appSliceC0 = APP_SLICE_C0;
+  appSliceC1 = APP_SLICE_C1;
+  appSliceC2 = APP_SLICE_C2;
+  appSliceC3 = APP_SLICE_C3;
+  appSliceC4 = APP_SLICE_C4;
+  appSliceC5 = APP_SLICE_C5;
+
+  appFFC0 = APP_FF_C0;
+  appFFC1 = APP_FF_C1;
+  appFFC2 = APP_FF_C2;
+  appFFC3 = APP_FF_C3;
+  appFFC4 = APP_FF_C4;
+  appFFC5 = APP_FF_C5;
+
+  appLutC0 = APP_LUT_C0;
+  appLutC1 = APP_LUT_C1;
+  appLutC2 = APP_LUT_C2;
+  appLutC3 = APP_LUT_C3;
+  appLutC4 = APP_LUT_C4;
+  appLutC5 = APP_LUT_C5;
+
+  appBramC0 = APP_BRAM_C0;
+  appBramC1 = APP_BRAM_C1;
+  appBramC2 = APP_BRAM_C2;
+  appBramC3 = APP_BRAM_C3;
+  appBramC4 = APP_BRAM_C4;
+  appBramC5 = APP_BRAM_C5;
+
+  appDspC0 = APP_DSP_C0;
+  appDspC1 = APP_DSP_C1;
+  appDspC2 = APP_DSP_C2;
+  appDspC3 = APP_DSP_C3;
+  appDspC4 = APP_DSP_C4;
+  appDspC5 = APP_DSP_C5;
+
+  appTransferC0 = APP_TRANSFER_C0;
+  appTransferC1 = APP_TRANSFER_C1;
+  appTransferC2 = APP_TRANSFER_C2;
+  //appTransferC3 = APP_TRANSFER_C3;
+                  
+  appMaxUnroll = APP_UNROLL_MAX;
+  appThreadBlkNum = APP_THREADBLOCK_NUM;
+  arrayAssignHelper(ap_profile, ap_profile_mm_int); 
+  taskIter = APP_TASK_ITER;
+}
+
+void output_config(FILE * f, config c)
+{
+  fprintf(f, "Configuration\n");
+  fprintf(f, "\t[TileX,TileY]: %d,%d\n",
+        c.tile.first, c.tile.second);
+  fprintf(f, "\t[Core]: %d\n", c.core);
+  fprintf(f, "\t[Unroll]: %d\n", c.unroll);
+  fprintf(f, "\t[Mem]: %d\n", c.mem);
+  fprintf(f, "\t[Latency]: %f\n", c.latency);
+  fflush(f);
+}
+
+
+void output_config_full(FILE * f, config c) {
+  fprintf(f, "Config:%*d  ", 4, c.id);
+  printf("Tiles: %dx%d  core: %*d  unroll: %*d  mpart: %*d  reg: %*d  cyc: %*ld  period: %f  lat: %*e\n",
+    c.tile.first, c.tile.second, 2, c.core, 2, c.unroll, 2, c.mem, 6, 
+    c.FF, 10, c.cycle, c.period, 13, c.latency);
+  fflush(f);
+}
+
+
+void output_result(FILE * f, result r)
+{
+  fprintf(f, "Result\n");
+  fprintf(f, "\t[cycles]: %ld\n", r.cycle);
+  fprintf(f, "\t[dsp]:%d\n",  r.dsp);
+  fprintf(f, "\t[bram]:%d\n", r.bram);
+  fprintf(f, "\t[lut]:%d\n",  r.lut);
+  fprintf(f, "\t[reg]:%d\n",  r.FF);
+}
+
+
+int log2val (int inp)
+{
+  assert(inp > 0);
+ int logval = 0;
+  if (inp == 1)
+    return logval;
+
+  assert(inp % 2 == 0);
+  do {
+    inp /= 2;
+    logval++;
+  } while (inp > 1);
+
+  return logval;
+}
+
+void findMinMaxParams(std::list<config> &cfgLst) 
+{
+  config minConf, maxConf;
+  int minThreads, maxThreads;
+
+  std::list<config>::iterator itr = cfgLst.begin();
+  minConf = *itr;
+  maxConf = *itr;
+  minThreads = itr->core * itr->unroll * itr->tile.first * itr->tile.second;
+  maxThreads = itr->core * itr->unroll * itr->tile.first * itr->tile.second;
+  itr++;
+
+  for ( ; itr != cfgLst.end() ; itr++) {
+    //threads
+    if ((itr->core * itr->unroll * itr->tile.first * itr->tile.second) < minThreads)
+      minThreads = itr->core * itr->unroll * itr->tile.first * itr->tile.second;
+    if ((itr->core * itr->unroll * itr->tile.first * itr->tile.second) > maxThreads)
+      maxThreads = itr->core * itr->unroll * itr->tile.first * itr->tile.second;
+    // Cores
+    if (itr->core < minConf.core)
+      minConf.core = itr->core;
+    if (itr->core > maxConf.core)
+      maxConf.core = itr->core;
+    // cycles
+    if (itr->cycle < minConf.cycle)
+      minConf.cycle = itr->cycle;
+    if (itr->cycle > maxConf.cycle)
+      maxConf.cycle = itr->cycle;
+    // reg
+    if (itr->FF < minConf.FF)
+      minConf.FF = itr->FF;
+    if (itr->FF > maxConf.FF)
+      maxConf.FF = itr->FF;
+    // period
+    if (itr->period < minConf.period)
+      minConf.period = itr->period;
+    if (itr->period > maxConf.period)
+      maxConf.period = itr->period;
+    // latency
+    if (itr->latency < minConf.latency)
+      minConf.latency = itr->latency;
+    if (itr->latency > maxConf.latency)
+      maxConf.latency = itr->latency;
+  }
+
+#ifdef DEBUG
+  printf("\n\nMin/Max values:\n");
+  printf("Threads: %d / %d\n", minThreads, maxThreads);
+  printf("Cores: %d / %d\n", minConf.core, maxConf.core);
+  printf("Cycles: %d / %d\n", minConf.cycle, maxConf.cycle);
+  printf("Registers: %d / %d\n", minConf.FF, maxConf.FF);
+  printf("Period: %f / %f\n", minConf.period, maxConf.period);
+  printf("Latency: %e / %e\n", minConf.latency, maxConf.latency);
+#endif
+} // findMinMaxParams()
+
+int run_hls(int unroll, int mem)
+{
+  char command[MAX_FILE_LENGTH];
+  int  latency;
+  FILE *freport;
+
+  latency = 0;
+  if (block_cycle[unroll][mem])
+    return block_cycle[unroll][mem];
+
+  sprintf(command, "python get_compute_latency.py {{app}} %d %d", 
+            unroll, mem);
+  fprintf(stderr, "execute script get_compute_latency.py [%s]\n", command);
+  system(command);
+   
+  freport = fopen("compute_latency.txt", "r");
+  if (!freport) {
+    fprintf(stderr, "cannot open report file!\n");
+    exit(1);
+  } 
+    
+  fscanf(freport, "%d", &latency);
+
+  fclose(freport);
+
+  block_cycle[unroll][mem] = latency;
+  printf("HLS DATA: unroll = %d, mem = %d, latency = %d\n",
+           unroll, mem, latency);
+  return latency;             
+}
+
+
+// Estimate frequency degradation, i.e. period lengthening
+// -------------------------------------------------------
+double estimate_period(int tileGridY, int tileGridX, int cfgTileSlice, int unroll, int mem) {
+
+  int tileSlicesX2, tileSlicesY2;  // Squared tile dimensions in slices
+  int minTileSize2;
+  double minDiag2, period;
+
+  tileSlicesY2 = (devSliceY / tileGridY) * (devSliceY / tileGridY);
+  tileSlicesX2 = (devSliceX / tileGridX) * (devSliceX / tileGridX);
+
+  // Get smallest tile dimension
+  minTileSize2 = (tileSlicesX2 < tileSlicesY2) ? tileSlicesX2 : tileSlicesY2;
+
+  if (cfgTileSlice <= 0) {
+    printf("Got negative slice number! Please profile more data, or revise the model.\n");
+    exit(1);
+  }
+  if (cfgTileSlice <  minTileSize2)
+    minDiag2 = 2.0 * ((double)cfgTileSlice);
+  else
+    minDiag2 = (double)minTileSize2 + (double)cfgTileSlice*(cfgTileSlice / (double) minTileSize2);
+
+  double util = (double) cfgTileSlice / ((devSliceY / tileGridY) * (devSliceX / tileGridX));
+  //period =  (double) (APP_FREQ_C0 + APP_FREQ_C1 * sqrt(minDiag2));
+  period  = (double) (APP_FREQ_C0 + APP_FREQ_C1 * sqrt(minDiag2) + 
+            APP_FREQ_C2 * util + APP_FREQ_C3 * unroll + APP_FREQ_C4 * mem);
+  return period;
+}
+
+
+// Estimate total compute cycles
+// ---------------------
+long estimate_cyc(int cores, int unroll, int mpart, int tileNum, int is_profiled) {
+
+  int unroll2mart = unroll / mpart;
+  int blk_cycles;
+  long total_cycles;
+
+  if (is_profiled == 0) {
+    // call Vivado HLS to get #cycles
+    blk_cycles = run_hls(unroll, mpart);
+    printf("HLS Cosim with unroll=%d, mpart=%d: blk_cycles=%d\n", unroll, mpart, blk_cycles);
+  } else {
+    //get #cycles from previous profiling configs
+    int u = log2val(unroll);
+    int m = log2val(mpart);
+    blk_cycles = ap_profile[u][m];
+  }
+  // number of iterations a FCUDA core needs to run
+  iterNum = taskIter * (appThreadBlkNum + (tileNum * cores -1)) / (tileNum * cores);
+  total_cycles = (long)iterNum * blk_cycles;
+  return total_cycles;
+}
+
+
+// Estimate performance, i.e. latency
+// ----------------------------------
+config estimate_perf(config cfg, int cfgSize, int is_profiled) {
+
+  double cfgTileFF, cfgTileLut, cfgTileSlice, cfgTileBram, cfgTileDsp;
+  double cfgSlice, cfgFF, cfgLut, cfgBram, cfgDsp;
+  int tileGridX, tileGridY; // Tile grid dimensions
+  double period;
+  long cycles;
+  int tileNum;
+  double latency;
+  long transfer_latency;
+  int hier;
+
+  // Use resource model to predict the resource of a specific configuration
+  cfgTileFF =
+        appFFC0 +
+        appFFC1 * cfg.core +
+        appFFC2 * cfg.core * cfg.unroll +
+        appFFC3 * cfg.core * cfg.mem +
+        appFFC4 * cfg.unroll * cfg.mem + axi_interconn_lv1[cfg.core - 1][2];
+  cfgTileLut =
+        appLutC0 +
+        appLutC1 * cfg.core +
+        appLutC2 * cfg.core * cfg.unroll +
+        appLutC3 * cfg.core * cfg.mem +
+        appLutC4 * cfg.unroll * cfg.mem + axi_interconn_lv1[cfg.core - 1][1];
+  cfgTileSlice =
+        appSliceC0 +
+        appSliceC1 * cfg.core +
+        appSliceC2 * cfg.core * cfg.unroll +
+        appSliceC3 * cfg.core * cfg.mem +
+        appSliceC4 * cfg.unroll * cfg.mem + axi_interconn_lv1[cfg.core - 1][0];
+  cfgTileBram = appBramC0 + 
+        appBramC1 * cfg.core +
+        appBramC2 * cfg.core * cfg.unroll +
+        appBramC3 * cfg.core * cfg.mem +
+        appBramC4 * cfg.unroll * cfg.mem + axi_interconn_lv1[cfg.core - 1][3];
+  cfgTileDsp = appDspC0 + 
+        appDspC1 * cfg.core +
+        appDspC2 * cfg.core * cfg.unroll +
+        appDspC3 * cfg.core * cfg.mem +
+        appDspC4 * cfg.unroll * cfg.mem + axi_interconn_lv1[cfg.core - 1][4];
+
+  tileGridX = cfg.tile.first;
+  tileGridY = cfg.tile.second;
+  tileNum = tileGridY * tileGridX;
+
+  if (tileNum == 1)
+    hier = 1;
+  else
+    hier = 2;
+
+  cfgSlice = cfgTileSlice * tileNum + axi_interconn_lv2[tileNum - 1][0] * (hier - 1) + appSliceC5;
+  cfgFF = cfgTileFF * tileNum + axi_interconn_lv2[tileNum - 1][2] * (hier - 1) + appFFC5;
+  cfgLut = cfgTileLut * tileNum + axi_interconn_lv2[tileNum - 1][1] * (hier - 1) + appLutC5;
+  cfgBram = cfgTileBram * tileNum + axi_interconn_lv2[tileNum - 1][3] * (hier - 1) + appBramC5;
+  cfgDsp = cfgTileDsp * tileNum + axi_interconn_lv2[tileNum - 1][4] * (hier - 1) + appDspC5;
+
+  // Note: for Virtex 7, one slice has 8 FFs
+  // this is to prevent using negative slice number
+  // generated by the model to compute period
+  cfgTileSlice = (cfgTileFF / 8);
+  if (cfgTileSlice < 0) {
+      printf("Got negative slice number! Please profile more data, or revise the model.\n");
+      exit(1);
+  }
+  // get predicted frequency value from the frequency model
+  period = estimate_period(tileGridY, tileGridX, cfgTileSlice, cfg.unroll, cfg.mem);
+  // get compute latency value
+  cycles = estimate_cyc(cfg.core, cfg.unroll, cfg.mem, tileNum, is_profiled);
+  cfg.tripcount = iterNum;
+
+  // get transfer latency value from the memory latency model
+  transfer_latency =
+      (long)appTransferC0 +
+      (long)appTransferC1 * cfg.core +
+      //(long)appTransferC3 * tileNum +
+      (long)appTransferC2 * tileNum * cfg.core * (hier - 1);
+  if (transfer_latency < 0) {
+    printf("Got negative latency: %ld. Please profile more data, or revise the model", 
+        transfer_latency);
+    exit(1);
+  }
+  cfg.transfer_cycle = transfer_latency;
+
+  // choose to also take into account of memory (transfer) latency in total latency
+  // or just compute latency
+  if (MemBound == 1)
+    transfer_latency = (long)transfer_latency * iterNum / 1;
+  else if (MemBound == 0)
+    transfer_latency = 0;
+
+  // ignore the overhead latency for now
+  // only consider the compute & transfer tasks that are overlapped
+  latency = (double)(max(cycles, transfer_latency)) * period;
+
+  config res = cfg;
+  res.mem_latency = (double)(transfer_latency * period);
+  res.com_latency = (double)(cycles * period);
+  res.slice = cfgSlice;
+  res.FF = cfgFF;
+  res.lut = cfgLut;
+  res.bram = cfgBram;
+  res.dsp = cfgDsp;
+  res.cycle = cycles;
+  res.period = period;
+  res.latency = latency;
+  res.id = cfgSize;
+
+#ifdef DEBUG
+  output_config_full(stdout, res);
+#endif
+
+  return res;
+} // estimate_perf()
+
+
+// **************************
+//     Exhaustive search
+// **************************
+
+config SLP_cfg_singleTile;
+config SLP_cfg_best;
+
+void exhaustive_search()
+{
+  // 0: invoking VIVADOHLS to get #cycles
+  // 1: get data from profiled array
+  int is_profiled = 0;
+  int tileX, tileY; // tile organization in the X and Y axis
+  int core, unroll, mem, tileNum;
+
+  int maxCoreNum, maxUnrolNum, maxPartNum;
+  int memCoreNum, ffCoreNum, lutCoreNum, dspCoreNum, sliceCoreNum;
+  int memUnrolNum, lutUnrolNum, dspUnrolNum, ffUnrolNum;
+  int memPartNum, lutPartNum, dspPartNum, ffPartNum;
+  int tileSlice;
+  int tItr;
+
+  // iterate through tile configurations
+  for (tItr = 0; tItr < dev_tiles.size(); tItr++) { 
+    tileX = dev_tiles[tItr].first;
+    tileY = dev_tiles[tItr].second;
+
+    config cfg;
+    cfg.tile = std::pair<int, int> (tileX, tileY);
+    tileNum = tileX * tileY;
+    tileSlice = devSliceNum / tileNum;
+    int multiLevel = 0;
+    if (tileNum > 1)
+      multiLevel = 1;
+
+    maxCoreNum = 16;
+
+    for (core = 1; core <= maxCoreNum; core++) {
+      cfg.core = core;
+      maxUnrolNum = appMaxUnroll;
+
+      for (unroll = 1; unroll <= maxUnrolNum; unroll++) {
+        if (appMaxUnroll % unroll != 0)
+          continue;
+
+        cfg.unroll = unroll;
+        maxPartNum = unroll;
+        for (mem = 1; mem <= maxPartNum; mem++) {
+          if (unroll % mem != 0)
+            continue;
+
+          cfg.mem = mem;
+          config res;
+
+          res = estimate_perf(cfg, (int)allConfigs.size(), is_profiled);
+          // we should be conservative about slice. Comment for now
+          //if (res.slice > devSliceNum) continue;
+          if (res.lut > devLutNum || 
+              res.FF > devFFNum || 
+              res.bram > devBramNum || 
+              res.dsp > devDspNum) {
+            continue;
+          }
+                            
+          int res_total_cores = res.core * res.tile.first * res.tile.second;
+          int SLP_total_cores = SLP_cfg_best.core * 
+                                  SLP_cfg_best.tile.first * 
+                                  SLP_cfg_best.tile.second;
+
+          if (res.mem ==1 && res.unroll == 1 && 
+              res_total_cores > SLP_total_cores)
+            SLP_cfg_best = res;
+
+          if (res.mem ==1 && res.unroll == 1 && 
+              tileX == 1 && tileY == 1 && 
+              res.core > SLP_cfg_singleTile.core)
+            SLP_cfg_singleTile = res;
+
+          allConfigs.push_back(res);
+        } // mem loop
+      } // unroll loop
+    } // core loop
+  } // tile loop
+} // exhaustive_search()
+
+bool compare_latency(config first, config second) {
+  if (first.latency <= second.latency)
+    return true;
+  else
+    return false;
+}
+
+bool compare_com_latency(config first, config second) {
+  if (first.com_latency <= second.com_latency)
+    return true;
+  else
+    return false;
+}
+
+bool compare_tile_latency(config first, config second)
+{
+   if (first.tile < second.tile)
+       return true;
+   if (first.tile > second.tile)
+       return false;
+   return compare_latency(first, second);
+}
+
+bool compare_all_dimension(config first, config second)
+{
+   if (first.tile < second.tile)
+       return true;
+   if (first.tile > second.tile)
+       return false;
+
+   if (first.core < second.core)
+       return true;
+   if (first.core > second.core)
+       return false;
+
+   if (first.unroll < second.unroll)
+       return true;
+   if (first.unroll > second.unroll)
+       return false;
+
+   if (first.mem < second.mem)
+       return true;
+   if (first.mem > second.mem)
+       return false;
+
+   return compare_latency(first, second);
+}
+
+int best_core[300][300][2];
+int best_tile[300][300][2][2];
+int val[2];
+
+double binary_search(int dim)
+{
+  double cur_best, res_mid, res_midPls1;
+  config c, res;
+  int i, mid, midPls1, low, high, space[MAX_NUM_UNROLL];
+  int highUnroll,  highMem;
+  int lutUnrolNum, memPartNum, lutPartNum;
+  // 0: invoking VIVADOHLS to get #cycles
+  // 1: get data from profiled array
+  int is_profiled = 0;
+  //int tileNum = tileGridX * tileGridY;
+  int tileNum = 1;
+
+  if (dim >= 2) {
+    c.unroll = val[0]; c.mem = val[1];
+    c.core   = best_core[val[0]][val[1]][0];
+    c.tile   = std::pair<int, int> (
+        best_tile[val[0]][val[1]][0][0], 
+        best_tile[val[0]][val[1]][1][0]);
+
+    res = estimate_perf(c, (int)binaryConfigs.size(), is_profiled);
+
+    if (res.lut > devLutNum || 
+        res.FF > devFFNum || 
+        res.bram > devBramNum || 
+        res.dsp > devDspNum) {
+      printf("Oversized binary search result!\n");
+      return -1;
+    }
+
+    if (res.mem_latency > res.com_latency) {
+      printf("Memory bound!\n");
+      c.core   = best_core[val[0]][val[1]][1];
+      c.tile   = std::pair<int, int> (
+          best_tile[val[0]][val[1]][0][1], 
+          best_tile[val[0]][val[1]][1][1]);
+
+      res = estimate_perf(c, (int)binaryConfigs.size(), is_profiled);
+    }
+
+    // TAN: The question here is whether we compare comp_latency 
+    // (without mem_latency consideration) or total latency 
+    // (including comp_latency and mem_latency). 
+    // I think we should go with the latter.
+    if (binaryConfigs.size() == 0)
+      best_config = res;
+    else if (res.latency < best_config.latency){
+      printf("binary search step: best unroll: %d \t best mpart: %d \t best com_latency: %lf \t best latency: %lf \t curr unroll: %d \t curr mpart: %d \t curr latency: %lf \n", best_config.unroll, best_config.mem, best_config.com_latency, best_config.latency, res.unroll, res.mem, res.latency);
+      best_config = res;
+    }
+    binaryConfigs.push_back(res);
+
+    //return res.com_latency;
+    return res.latency;
+  }
+
+  /* dynamically build the search space */
+  if (dim == 0) {
+    highUnroll = appMaxUnroll;
+    low  = 0;
+    high = -1;
+    for (i = 1; i <= highUnroll; i++) {
+      if (appMaxUnroll % i == 0)
+        space[++high] = i;
+    }
+  }
+
+  if (dim == 1) {
+    // Mem partition should not exceed unrolling
+    //highMem = highMem < (val[0]) ? highMem : val[0];
+    highMem = val[0];
+
+    low  = 0;
+    high = -1;
+    for (i = 1; i <= highMem; i++) {
+      if (val[0] % i == 0)
+        space[++high] = i;
+    }
+  }
+
+#ifdef DEBUG
+  printf("%s  low: %d high: %d\n", 
+      (dim == 0) ? "Unroll" : "MPART", low, high);
+  fflush(stdout);
+#endif
+
+  cur_best = std::numeric_limits<double>::max();
+  while (low <= high) {
+    mid      = (low + high) / 2;
+    midPls1  = mid + 1;
+
+#ifdef DEBUG
+    printf("%s  low: %d, mid: %d, midPls1: %d, high: %d\n",
+        (dim == 0) ? "Unroll" : "MPART", low, mid, midPls1, high);
+    fflush(stdout);
+#endif
+
+    val[dim] = space[mid];
+    res_mid  = binary_search(dim + 1);
+
+#ifdef DEBUG
+    printf("[%s] Estimation for mid done\n",
+        (dim == 0) ? "Unroll" : "MPART");
+    fflush(stdout);
+#endif
+
+    //boundary case
+    if (midPls1 > high) {
+      if (res_mid != -1 || res_mid < cur_best)
+        cur_best = res_mid;
+        break;
+    }
+
+   val[dim]    = space[midPls1];
+   res_midPls1 = binary_search(dim + 1);
+
+#ifdef DEBUG
+    printf("[%s] Estimation for midPls1 done\n", 
+        (dim == 0) ? "Unroll" : "MPART");
+    fflush(stdout);
+#endif
+
+    if (res_mid != -1 && res_midPls1 != -1) {
+      if(res_mid < res_midPls1) {
+        if (res_mid < cur_best)
+          cur_best = res_mid;
+          high = mid;
+      } else {
+        if (res_midPls1 < cur_best)
+          cur_best = res_midPls1;
+        low = midPls1 + 1;
+      }
+    }
+  }
+
+  return cur_best;
+}
+
+void binary_search_wrapper()
+{
+
+  int tItr, tileX, tileY, unroll, mem;
+  double factor, coeff[MAX_NUM_UNROLL][MAX_NUM_UNROLL], lat[MAX_NUM_UNROLL][MAX_NUM_UNROLL], mem_lat[MAX_NUM_UNROLL][MAX_NUM_UNROLL];
+  double factor2, coeff2[MAX_NUM_UNROLL][MAX_NUM_UNROLL];
+  std::list<config>::iterator itr;
+  allConfigs.sort(compare_all_dimension);
+
+  std::memset(best_core, 0, sizeof(best_core));
+  std::memset(coeff,     0, sizeof(coeff));
+  std::memset(lat,       0, sizeof(lat));
+  std::memset(mem_lat,       0, sizeof(mem_lat));
+  std::memset(coeff2,     0, sizeof(coeff2));
+
+  // find the best core number from the feasible designs.
+  for (itr = allConfigs.begin(); itr != allConfigs.end() ; itr++) {
+    config cur = *itr;
+
+    tileX  = cur.tile.first;
+    tileY  = cur.tile.second;
+
+    unroll = cur.unroll;
+    mem    = cur.mem;
+    factor2 = cur.mem_latency;
+    factor = cur.period * 
+      (appThreadBlkNum + (tileY * tileX * cur.core -1)) / 
+    (tileY * tileX * cur.core);
+
+    //this is for compute-bound
+    if(best_core[unroll][mem][0] == 0 || 
+        factor < coeff[unroll][mem]) {
+      best_core[unroll][mem][0] = cur.core;
+      coeff[unroll][mem]     = factor;
+      //lat[unroll][mem]       = cur.latency;
+      //mem_lat[unroll][mem]   = cur.mem_latency;
+
+      best_tile[unroll][mem][0][0] = tileX;
+      best_tile[unroll][mem][1][0] = tileY;
+    }
+    //this is for mem-bound
+    if (best_core[unroll][mem][1] == 0 || 
+        factor2 < coeff2[unroll][mem]) {
+      best_core[unroll][mem][1] = cur.core;
+      coeff2[unroll][mem]    = cur.mem_latency;
+      //lat[unroll][mem]       = cur.latency;
+      //mem_lat[unroll][mem]   = cur.mem_latency;
+
+      best_tile[unroll][mem][0][1] = tileX;
+      best_tile[unroll][mem][1][1] = tileY;
+    }
+  }
+#ifdef DEBUG
+  for (unroll = 1; unroll <= appMaxUnroll; unroll *= 2) {
+    for (mem = 1; mem <= unroll; mem *= 2) {
+      printf("unroll %d mem %d --- core %d tile[%d, %d] mem_latency %lf, latency %lf\n", unroll, mem, best_core[unroll][mem], best_tile[unroll][mem][0], best_tile[unroll][mem][1], mem_lat[unroll][mem] / 1e6, lat[unroll][mem] / 1e6);
+    }
+  }
+#endif
+
+  binaryConfigs.clear();
+  binary_search(0);
+  printf("best binary search configuration\n");
+  printf("[%d] \t [tile]: %dx%d \t [core]:%d \t [unroll]:%d \t [lut]: %d \t [mem]:%d \t [period]:%f \t [cycle]:%ld \t [mem_latency]:%lf \t [cmp_latency]:%lf \t [latency]:%lf\n", 
+      best_config.id, 
+      best_config.tile.first, best_config.tile.second, 
+      best_config.core, best_config.unroll, best_config.lut, 
+      best_config.mem, best_config.period, 
+      best_config.cycle, 
+      best_config.mem_latency / 1e6, 
+      best_config.com_latency / 1e6, 
+      best_config.latency / 1e6);
+}
+
+int main(int argc, char **argv) {
+  best_config.latency = std::numeric_limits<double>::max();
+  SLP_cfg_best.latency = std::numeric_limits<double>::max();
+  SLP_cfg_singleTile.core = 0;
+  initialize();
+  config best_exhaustive;
+
+  std::memset(block_cycle, 0, sizeof(block_cycle));
+
+  printf("Run exhaustive search ...\n");
+
+  exhaustive_search();
+  // Find min/max for each dimension
+  findMinMaxParams(allConfigs);
+
+  // Find top performers
+  allConfigs.sort(compare_latency);
+
+  printf("\n\nTop 30 performers (out of %u):\n\n", allConfigs.size());
+    std::list<config>::iterator itr = allConfigs.begin();
+  printf("ID \t Tiles \t cores \t unroll  threads  mpart     reg      lut        dsp        bram \t period \t cycle \t mem_cycle \t total_mem_cycle \t mem_latency \t cmp_latency \t latency\n");
+
+  for (int i=0; i<allConfigs.size(); i++) {
+    config cur = *itr;
+    if (i == 0)
+      best_exhaustive = cur;
+    printf("%d \t %dx%d \t ", 
+        cur.id, cur.tile.first, cur.tile.second);
+
+    printf(" %d \t %d \t %d \t   ",
+        cur.core, cur.unroll,
+        cur.tile.first*cur.tile.second * cur.core * cur.unroll);
+
+    printf("%d \t %*d     %*d      %*d      %*d\t ",
+        cur.mem, 7, cur.FF,
+        7, cur.lut,
+        4, cur.dsp, 4, cur.bram);
+
+    printf("%*f \t %*ld \t %*ld \t %*ld \t %*.0f \t %*.0f \t %*.0f\n", 
+        10, cur.period, 10, cur.cycle, 10, cur.transfer_cycle, 
+        10, cur.transfer_cycle * cur.tripcount, 10, cur.mem_latency / 1000000,
+        11, cur.com_latency / 1000000, 11, cur.latency / 1000000);
+
+    printf("=====\n");
+
+    ++itr;
+  }
+
+  std::list<config>groupConfigs;
+  printf("Unroll factor trends: \n");
+  for (int unroll_num = 1; unroll_num <= 16; unroll_num = unroll_num * 2) {
+    groupConfigs.clear();
+    std::list<config>::iterator itr = allConfigs.begin();
+    while (itr != allConfigs.end()) {
+      config cur = *itr;
+      if (cur.unroll == unroll_num)
+        groupConfigs.push_back(cur);
+      ++itr;
+    }
+    groupConfigs.sort(compare_com_latency);
+    std::list<config>::iterator itr1 = groupConfigs.begin();
+    config unroll_best = *itr1;
+    //printf("%lf \n", unroll_best.latency / 1e6);
+    printf("%lf \n", unroll_best.com_latency / 1e6);
+  }
+  printf("mpart degree trends:\n");
+
+  groupConfigs.clear();
+  std::list<config>::iterator itr_u = allConfigs.begin();
+  int unroll_fix = 16;
+  while (itr_u != allConfigs.end()) {
+    config cur = *itr_u;
+    if (cur.unroll == unroll_fix)
+      groupConfigs.push_back(cur);
+    ++itr_u;
+  }
+
+  for (int mpart_num = 1; mpart_num <= unroll_fix; mpart_num = mpart_num * 2) {
+    std::list<config>m_groupConfigs;
+    m_groupConfigs.clear();
+    std::list<config>::iterator itr = groupConfigs.begin();
+    while (itr != groupConfigs.end()) {
+      config cur = *itr;
+      if (cur.mem == mpart_num)
+        m_groupConfigs.push_back(cur);
+      ++itr;
+    }
+    m_groupConfigs.sort(compare_com_latency);
+    std::list<config>::iterator itr1 = m_groupConfigs.begin();
+    config m_best = *itr1;
+    printf("%lf \n", m_best.com_latency / 1e6);
+  }
+
+  // Binary search
+  printf("Run binary search...\n");
+  binary_search_wrapper();
+
+  ///*
+  double com_best = 0;
+  double sys_best = 0;
+  config sys_bestcfg;
+  config com_bestcfg;
+  config baseline;
+  itr = allConfigs.begin();
+  for(int i=0; i<allConfigs.size(); i++) {
+    config cur = *itr;
+
+    if (cur.tile.first * cur.tile.second * cur.core == 1) {
+
+      if (com_best == 0 || com_best > cur.com_latency) {
+        com_best = cur.com_latency;
+        com_bestcfg = cur;
+      }
+      if (sys_best == 0 || sys_best > cur.latency) {
+        sys_best = cur.latency;
+        sys_bestcfg = cur;
+      }
+    }
+
+    if (cur.unroll == 16 && cur.mem == 16) {
+      if (cur.tile.first * cur.tile.second * cur.core > 
+          baseline.tile.first * baseline.tile.second * baseline.core)
+        baseline = cur;
+    }
+    ++itr;
+  }
+
+  com_bestcfg = best_config;
+  sys_bestcfg = best_config;
+
+  printf("COM_BEST: %d, lat=%lf, com_lat=%lf, mem_lat=%lf, slice=%d, lut=%d, ff=%d, bram=%d, dsp=%d\n", 
+      com_bestcfg.tile.first * com_bestcfg.tile.second * com_bestcfg.core, 
+      com_bestcfg.latency / 1e6, 
+      com_bestcfg.com_latency / 1e6, 
+      com_bestcfg.mem_latency / 1e6,
+      com_bestcfg.slice, com_bestcfg.lut, com_bestcfg.FF, 
+      com_bestcfg.bram, com_bestcfg.dsp);
+
+  printf("SYS_BEST: %d, lat=%lf, sys_lat=%lf, mem_lat=%lf, slice=%d, lut=%d, ff=%d, bram=%d, dsp=%d\n", 
+      sys_bestcfg.tile.first * sys_bestcfg.tile.second * sys_bestcfg.core, 
+      sys_bestcfg.latency / 1e6, 
+      sys_bestcfg.com_latency / 1e6, 
+      sys_bestcfg.mem_latency / 1e6,
+      sys_bestcfg.slice, sys_bestcfg.lut, sys_bestcfg.FF, 
+              sys_bestcfg.bram, sys_bestcfg.dsp);
+
+  printf("Baseline: %d, lat=%lf, com_lat=%lf, mem_lat=%lf, slice=%d, lut=%d, ff=%d, bram=%d, dsp=%d, unroll=%d, mpart = %d\n", 
+      baseline.tile.first * baseline.tile.second * baseline.core, 
+      baseline.latency, baseline.com_latency, baseline.mem_latency,
+      baseline.slice, baseline.lut, baseline.FF, 
+      baseline.bram, baseline.dsp, baseline.unroll, baseline.mem);
+
+  printf("Computation Speed-up: %lf\n", baseline.com_latency / com_bestcfg.com_latency);
+  printf("System Speed-up: %lf\n", (baseline.mem_latency + baseline.com_latency) / sys_bestcfg.latency);
+	
+        
+  printf("best configuration from exhaustive search\n");
+  printf("[%d] \t [tile]: %dx%d \t [core]:%d \t [unroll]:%d \t [mem]:%d \t [period]:%f \t [cycle]:%ld \t [mem_latency]:%lf\t [cmp_latency]:%lf\t [latency]:%lf\n", 
+      best_exhaustive.id, best_exhaustive.tile.first, best_exhaustive.tile.second, 
+      best_exhaustive.core, best_exhaustive.unroll, best_exhaustive.mem, 
+      best_exhaustive.period, best_exhaustive.cycle, 
+      best_exhaustive.mem_latency / 1e6, 
+      best_exhaustive.com_latency / 1e6, 
+      best_exhaustive.latency / 1e6);
+
+  printf("accuracy of modified binary search result: %f\%\n", 
+      (best_config.latency - best_exhaustive.latency) * 100 / best_config.latency);
+
+  if (SLP_cfg_best.tile.first * SLP_cfg_best.tile.second * SLP_cfg_best.core > 16)
+    SLP_cfg_singleTile.core = 16;
+  
+  config res;
+  //res = estimate_perf(SLP_cfg_singleTile, (int)allConfigs.size(), 1);
+  res = estimate_perf(SLP_cfg_singleTile, (int)allConfigs.size(), 0);
+  SLP_cfg_singleTile = res;
+
+  printf("SLP best configuration\n");
+  printf("[%d] \t [tile]: %dx%d \t [core]:%d \t [unroll]:%d \t [mem]:%d \t [period]:%f \t [cycle]:%ld \t [mem_latency]:%lf\t [cmp_latency]:%lf\t [latency]:%lf\n", 
+      SLP_cfg_best.id, SLP_cfg_best.tile.first, SLP_cfg_best.tile.second, 
+      SLP_cfg_best.core, SLP_cfg_best.unroll, SLP_cfg_best.mem, 
+      SLP_cfg_best.period, SLP_cfg_best.cycle, 
+      SLP_cfg_best.mem_latency / 1e6, SLP_cfg_best.com_latency / 1e6, 
+      SLP_cfg_best.latency / 1e6);
+
+
+  printf("SLP single tile configuration\n");
+  printf("[%d] \t [tile]: %dx%d \t [core]:%d \t [unroll]:%d \t [mem]:%d \t [period]:%f \t [cycle]:%ld \t [mem_latency]:%lf\t [cmp_latency]:%lf\t [latency]:%lf\n", 
+      SLP_cfg_singleTile.id, 
+      SLP_cfg_singleTile.tile.first, SLP_cfg_singleTile.tile.second, 
+      SLP_cfg_singleTile.core, SLP_cfg_singleTile.unroll, 
+      SLP_cfg_singleTile.mem, SLP_cfg_singleTile.period, 
+      SLP_cfg_singleTile.cycle, 
+      SLP_cfg_singleTile.mem_latency / 1e6, 
+      SLP_cfg_singleTile.com_latency / 1e6, 
+      SLP_cfg_singleTile.latency / 1e6);
+
+  printf("MLP binary search over SLP_best \t MLP over SLP_single\n");
+  printf("%lf\t", SLP_cfg_best.latency / best_config.latency);
+  printf("%lf\n", SLP_cfg_singleTile.latency / best_config.latency);
+
+  printf("MLP exhaustive search over SLP_best \t MLP over SLP_single\n");
+  printf("%lf\t", SLP_cfg_best.latency / best_exhaustive.latency);
+  printf("%lf\n", SLP_cfg_singleTile.latency / best_exhaustive.latency);
+              
+  return 0;
+}
+
+
+

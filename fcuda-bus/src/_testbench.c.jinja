@@ -1,0 +1,53 @@
+#include <stdio.h>
+#include <fcuda.h>
+
+{%- for scalar in scalar_values %}
+#define {{scalar.name}}_macro {{scalar.value}}
+{%- endfor %}
+
+int main()
+{
+{%- for arg in list_arguments %}
+{%- if arg.name != "gridDim" and arg.name != "blockDim" and
+       arg.name != "memport_p0" and 
+       arg.name != "num_cores" and 
+       arg.name != "core_id" %}
+{{arg.type}} {{arg.name}} = {{arg.name}}_macro;
+{%- endif %}
+{%- endfor %}
+
+dim3 gridDim;
+//only run once to save time
+//gridDim.x = 1;
+//gridDim.y = 1;
+//gridDim.z = 1;
+gridDim.x = gridDim_x_macro;
+gridDim.y = gridDim_y_macro;
+gridDim.z = gridDim_z_macro;
+dim3 blockDim;
+blockDim.x = blockDim_x_macro;
+blockDim.y = blockDim_y_macro;
+blockDim.z = blockDim_z_macro;
+int num_cores = 1;
+int core_id = 0;
+{{memport_data_type}} memport_p0[{{sim_file_size}}];
+FILE *fp = fopen("{{gold_file}}", "r");
+if (fp == NULL) {
+printf("Error in opening file.");
+exit(1);
+}
+int i;
+for (i = 0; i < {{sim_file_size}}; i++) {
+fscanf(fp, "%x", &memport_p0[i]);
+}
+fclose(fp);
+
+{{top_level_function}}(
+{%- for arg in list_arguments %}
+{{arg.name}},
+{%- endfor %}
+num_cores,
+core_id);
+
+return 0;
+}
