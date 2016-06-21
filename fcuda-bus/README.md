@@ -75,7 +75,7 @@ directory}/bus_prj*. Inside this directory, the generated FCUDA C code is put
 under *fcuda_gen/*; the HLS project is at *hls/*; and the Vivado project's directory
 (either simulation or logic synthesis) is *vivado_prj/*.
 
-- The script reads the JSON file **busconfig.json** located at *{benchmark's
+- The script reads the JSON file **bus_config.json** located at *{benchmark's
   directory}/bus*. The JSON file defines many essential parameters for
 simulation/synthesis. Here is an explanation of the parameters used
 in the file.
