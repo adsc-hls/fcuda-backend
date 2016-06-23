@@ -465,6 +465,7 @@ wire ap_idle_0;
                      ap_start <= 0;
                      wait (ap_done);
 		     $display("[%t] clock cycle count: %d", $time, cyc_count);
+		     $display("FINAL_LATENCY=%d", cyc_count);
                      /*
                      // delay time to wait for all the written data to emerge in memory
                      #100000000; 

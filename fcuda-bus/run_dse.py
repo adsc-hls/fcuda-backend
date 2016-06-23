@@ -10,7 +10,7 @@ import xml.etree.ElementTree as ET
 from jinja2 import Environment, FileSystemLoader, Template
 from datetime import datetime
 from sklearn import linear_model
-from operator import add
+import operator
 import math
 from multiprocessing import Process
 
@@ -35,18 +35,6 @@ def run_command(command, is_exit):
 
 
 #num_cores_per_tile, unroll_degree, mpart_degree, num_tiles 
-configs1 = [
-[1, 1, 1, 1],
-[1, 2, 1, 1],
-[1, 2, 2, 1],
-[1, 4, 1, 1]]
-
-weights1 = [ 
-[ 1, 1, 1, 1, 1, 1],
-[ 1, 1, 2, 1, 2, 1],
-[ 1, 1, 2, 2, 4, 1],
-[ 1, 1, 4, 1, 4, 1]]
-
 configs = [
 [1, 1, 1, 1],
 [1, 2, 1, 1],
@@ -407,24 +395,6 @@ configs_mem = [
 [1, 1],
 [2, 1],
 [4, 1],
-[8, 1],
-[8, 4],
-[16, 4]
-]
-
-weights_mem = [
-[1, 1, 0, 0],
-[1, 2, 0, 0],
-[1, 4, 0, 0],
-[1, 8, 0, 0],
-[1, 8, 4, 4 * 8],
-[1, 16, 4, 4 * 16]
-]
-
-configs_mem1 = [
-[1, 1],
-[2, 1],
-[4, 1],
 [6, 1],
 [8, 1],
 [10, 1],
@@ -438,7 +408,7 @@ configs_mem1 = [
 [16, 4]
 ]
 
-weights_mem1 = [
+weights_mem = [
 [1, 1, 0, 0],
 [1, 2, 0, 0],
 [1, 4, 0, 0],
