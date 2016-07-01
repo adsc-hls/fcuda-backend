@@ -14,3 +14,5 @@ with the FCUDA C compiler (or front-end) to provide a complete FCUDA system
 kickoff. More importantly, please also check the relevant publications for better 
 insight on them (see  **license.txt**).
 
+- For bug reports and comments, please contact Prof. Deming Chen at dchen@illinois.edu
+
