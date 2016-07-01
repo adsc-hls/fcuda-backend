@@ -1,3 +1,26 @@
+################################################################################
+##    FCUDA
+##    Copyright (c) <2016>
+##    <University of Illinois at Urbana-Champaign>
+##    <University of California at Los Angeles>
+##    All rights reserved.
+##
+##    Developed by:
+##
+##        <ES CAD Group & IMPACT Research Group>
+##            <University of Illinois at Urbana-Champaign>
+##            <http://dchen.ece.illinois.edu/>
+##            <http://impact.crhc.illinois.edu/>
+##
+##        <VAST Laboratory>
+##            <University of California at Los Angeles>
+##            <http://vast.cs.ucla.edu/>
+##
+##        <Hardware Research Group>
+##            <Advanced Digital Sciences Center>
+##            <http://adsc.illinois.edu/>
+################################################################################
+
 #!/usr/bin/python
 import logging
 import sys
@@ -13,7 +36,7 @@ class Node(object):
     self.rtables   = []
     self.prtables = []
 
-  def __str__(self, indent = 0): 
+  def __str__(self, indent = 0):
     """Print a string representation of the node"""
     st = ""
     st += " "*indent + "Node:\n"
@@ -119,7 +142,7 @@ class Node(object):
 
     # do something else
     nhop = -1
-          
+
     while len(Q) > 0:
       item = Q.pop(0)
       nhop = item['nhop']
@@ -187,7 +210,7 @@ class Router(Node):
     n = self.getNeighbors()
     if (nhop >= src_port):
       i = nhop + 1
-    else: 
+    else:
       i = nhop
     return n[i]
 

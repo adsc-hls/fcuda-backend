@@ -1,3 +1,26 @@
+################################################################################
+##    FCUDA
+##    Copyright (c) <2016>
+##    <University of Illinois at Urbana-Champaign>
+##    <University of California at Los Angeles>
+##    All rights reserved.
+##
+##    Developed by:
+##
+##        <ES CAD Group & IMPACT Research Group>
+##            <University of Illinois at Urbana-Champaign>
+##            <http://dchen.ece.illinois.edu/>
+##            <http://impact.crhc.illinois.edu/>
+##
+##        <VAST Laboratory>
+##            <University of California at Los Angeles>
+##            <http://vast.cs.ucla.edu/>
+##
+##        <Hardware Research Group>
+##            <Advanced Digital Sciences Center>
+##            <http://adsc.illinois.edu/>
+################################################################################
+
 #!/usr/bin/python
 import math
 import logging
@@ -15,7 +38,7 @@ class Network(object):
     st = ""
     st += "Network:\n"
     st += "  num_ports: %d\n" % self.num_ports
-    st += "  nodes:\n" 
+    st += "  nodes:\n"
     for i in self.nodes:
       st += "%s\n" % i.__str__(4)
 
@@ -55,7 +78,7 @@ class Network(object):
     return sum(isinstance(x,Compute) for x in self.nodes)
 
   def numNonRouterNodes(self):
-    return sum(isinstance(x,Compute) + isinstance(x,Memory) for x in self.nodes) 
+    return sum(isinstance(x,Compute) + isinstance(x,Memory) for x in self.nodes)
 
   def getListNodes(self):
     return [x for x in self.nodes]
@@ -103,7 +126,7 @@ class Network(object):
       for neighbor in router.getNeighbors():
         nid = neighbor.getNodeNum()
         pos = pos_in_list(router.getNeighbors(),neighbor)
-        self.routers_logic += "assign r%d_out_%d = r%d_out[(%d + 1) * `IO_WIDTH - 1 : %d * `IO_WIDTH];\n" % (rid, nid, rid, 
+        self.routers_logic += "assign r%d_out_%d = r%d_out[(%d + 1) * `IO_WIDTH - 1 : %d * `IO_WIDTH];\n" % (rid, nid, rid,
             pos, pos)
 
     return self.routers_logic
@@ -143,9 +166,9 @@ class Network(object):
     M.addNeighbor(router_nodes[num_cores - 1])
 
     # connect each router to its surrouding nodes.
-    # The order here (which router connects to which router first) 
-    # really does not matter to the correctness of the network 
-    # (in term of delivering correct result), but it will affect the 
+    # The order here (which router connects to which router first)
+    # really does not matter to the correctness of the network
+    # (in term of delivering correct result), but it will affect the
     # performance (in term of clock cycles and memory accesses)
     # since the packets traverse differently, hence leads to
     # different network congestion.
@@ -172,7 +195,7 @@ class Network(object):
             # bottom node, same column
             if i < height - 1:
                 router_nodes[j + i * width].addNeighbor(router_nodes[j + (i + 1) * width])
-      
+
     list_nodes = []
     for i in range(0, num_cores):
         list_nodes.append(compute_nodes[i])

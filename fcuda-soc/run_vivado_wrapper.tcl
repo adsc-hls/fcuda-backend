@@ -1,3 +1,26 @@
+################################################################################
+##    FCUDA
+##    Copyright (c) <2016>
+##    <University of Illinois at Urbana-Champaign>
+##    <University of California at Los Angeles>
+##    All rights reserved.
+##
+##    Developed by:
+##
+##        <ES CAD Group & IMPACT Research Group>
+##            <University of Illinois at Urbana-Champaign>
+##            <http://dchen.ece.illinois.edu/>
+##            <http://impact.crhc.illinois.edu/>
+##
+##        <VAST Laboratory>
+##            <University of California at Los Angeles>
+##            <http://vast.cs.ucla.edu/>
+##
+##        <Hardware Research Group>
+##            <Advanced Digital Sciences Center>
+##            <http://adsc.illinois.edu/>
+################################################################################
+
 set PATH [lindex $argv 0]
 
 #The name of the benchmark
@@ -150,7 +173,7 @@ set num_interconn(3) 0
 
 if {$multi_levels == 1} {
   set id 1
-  
+
   set total_ports1 $total_ports
   while {$total_ports1 > 0} {
     if {$total_ports1 > 64} {
@@ -164,7 +187,7 @@ if {$multi_levels == 1} {
       if {$total_ports1 > 67} {
               set num_port(3) 16
       }
-      
+
       incr num_interconn(0)
       incr num_interconn(1)
       incr num_interconn(2)
@@ -224,9 +247,9 @@ if {$multi_levels == 1} {
         }
         endgroup
         incr num_axi_interconn
-      }     
+      }
     }
-    set total_ports1 [expr $total_ports1 - 64] 
+    set total_ports1 [expr $total_ports1 - 64]
     puts $total_ports1
   }
 }
@@ -254,15 +277,15 @@ foreach master_port $list_master_ports {
 
   append HP "/processing_system7_0/S_AXI_HP" ${HP_Port_id}
   puts $HP
-  
+
   if {$port_counter > 64} {
     #incr axi_in_0_id
     incr level
     set axi_in_0_id 0
     set port_counter [expr $port_counter - 64]
   }
-  
-  puts $port_counter  
+
+  puts $port_counter
   puts $level
   puts $axi_in_0_id
 

@@ -1,3 +1,26 @@
+################################################################################
+##    FCUDA
+##    Copyright (c) <2016>
+##    <University of Illinois at Urbana-Champaign>
+##    <University of California at Los Angeles>
+##    All rights reserved.
+##
+##    Developed by:
+##
+##        <ES CAD Group & IMPACT Research Group>
+##            <University of Illinois at Urbana-Champaign>
+##            <http://dchen.ece.illinois.edu/>
+##            <http://impact.crhc.illinois.edu/>
+##
+##        <VAST Laboratory>
+##            <University of California at Los Angeles>
+##            <http://vast.cs.ucla.edu/>
+##
+##        <Hardware Research Group>
+##            <Advanced Digital Sciences Center>
+##            <http://adsc.illinois.edu/>
+################################################################################
+
 #!/usr/bin/python
 
 import collections
@@ -52,7 +75,7 @@ default = [
     # total width of data portion of NoC packet. A packet consists of addr + data (needed for writes right now)
     ('DATA_DATAWIDTH'                , 64)                                                                    ,
 
-    # address width 
+    # address width
     ('DATA_AWIDTH'                   , 32)                                                                    ,
 
     # data width
@@ -63,7 +86,7 @@ default = [
 
     ('MAX_NUM_NODES'                 , '32')                                                                  ,   # FIXME?
 
-    # width of dest = log2(max # items in system) 
+    # width of dest = log2(max # items in system)
     ('DESTWIDTH'                     , int(math.log(32, 2)))                                                            ,   # FIXME == 5
 
     # width of packet type
@@ -90,7 +113,7 @@ default = [
     # width of route for NEXTHOP
     ('ROUTE_WIRE_WIDTH'              , '(1 << `DESTWIDTH ) ')                                                 ,
 
-    # aggregate widths 
+    # aggregate widths
     ('TOTAL_PKT_TYPE_WIDTH'          , '(`DATA_TYPEWIDTH * `NUM_INPUTS)')                                     ,
     ('TOTAL_SRC_ADDR_WIDTH'          , '(`DATA_SRCWIDTH * `NUM_INPUTS)')                                      ,
     ('TOTAL_WIDTH'                   , '(`NUM_INPUTS * `IO_WIDTH)')                                           ,
@@ -142,7 +165,7 @@ default = [
     # FIXME -- number of BRAMs per core
     ('NUM_BRAMS'                     , 3)                                                                     ,
 
-    # parameters of BRAM - FIXME 
+    # parameters of BRAM - FIXME
     ('BRAM_TAG_DATAWIDTH_PLUS_VALID' , 21)                                                                    ,
     ('BRAM_TAG_DATAWIDTH'            , 20)                                                                    ,
     ('BRAM_TAG_ADDRWIDTH'            , 10)                                                                    ,

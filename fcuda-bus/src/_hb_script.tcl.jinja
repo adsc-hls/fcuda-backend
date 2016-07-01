@@ -1,3 +1,27 @@
+################################################################################
+##    FCUDA
+##    Copyright (c) <2016>
+##    <University of Illinois at Urbana-Champaign>
+##    <University of California at Los Angeles>
+##    All rights reserved.
+##
+##    Developed by:
+##
+##        <ES CAD Group & IMPACT Research Group>
+##            <University of Illinois at Urbana-Champaign>
+##            <http://dchen.ece.illinois.edu/>
+##            <http://impact.crhc.illinois.edu/>
+##
+##        <VAST Laboratory>
+##            <University of California at Los Angeles>
+##            <http://vast.cs.ucla.edu/>
+##
+##        <Hardware Research Group>
+##            <Advanced Digital Sciences Center>
+##            <http://adsc.illinois.edu/>
+################################################################################
+
+
 package require math
 
 set project_name [lindex $argv 0]
@@ -56,10 +80,10 @@ set_property -name {CONFIG.BOARD_MIG_PARAM} -value  {Custom} -objects [get_bd_ce
 
 create_bd_cell -type ip -vlnv xilinx.com:ip:axi_interconnect:2.1 axi_interconnect_0
 if {$level == 1} {
-set_property -dict [list CONFIG.NUM_SI ${total_num_cores} CONFIG.NUM_MI {1}] [get_bd_cells axi_interconnect_0] 
+set_property -dict [list CONFIG.NUM_SI ${total_num_cores} CONFIG.NUM_MI {1}] [get_bd_cells axi_interconnect_0]
 }
 if {$level == 2} {
-set_property -dict [list CONFIG.NUM_SI ${num_tiles} CONFIG.NUM_MI {1}] [get_bd_cells axi_interconnect_0] 
+set_property -dict [list CONFIG.NUM_SI ${num_tiles} CONFIG.NUM_MI {1}] [get_bd_cells axi_interconnect_0]
 }
 
 # connect interconnect with MIG
@@ -93,7 +117,7 @@ connect_bd_net [get_bd_pins /mig_7series_0/init_calib_complete] [get_bd_ports in
 
 # wire connection
 create_bd_port -dir I -type clk aclk
-# This option will be overwritten by the *.xdc constraint file 
+# This option will be overwritten by the *.xdc constraint file
 set_property CONFIG.FREQ_HZ 100000000 [ get_bd_ports aclk]
 connect_bd_net [get_bd_pins proc_sys_reset_0/slowest_sync_clk] [get_bd_ports aclk] [get_bd_pins axi_interconnect_0/ACLK]
 connect_bd_net [get_bd_pins mig_7series_0/ui_clk_sync_rst] [get_bd_pins proc_sys_reset_0/ext_reset_in]
@@ -139,7 +163,7 @@ for {set x 0} {$x < ${num_tiles}} {incr x} {
         create_bd_cell -type ip -vlnv xilinx.com:ip:axi_interconnect:2.1 axi_interconnect_tile_$x
 	set padding 0
         if {$x < [expr {${total_num_cores} % ${num_tiles}}]} {
-	    set padding 1	
+	    set padding 1
 	}
         set_property -dict [list CONFIG.NUM_SI [expr {${total_num_cores} / ${num_tiles} + $padding}] CONFIG.NUM_MI {1}] [get_bd_cells axi_interconnect_tile_$x]
 
@@ -156,7 +180,7 @@ for {set x 0} {$x < ${num_tiles}} {incr x} {
 	}
     }
     for {set x 0} {$x < ${total_num_cores}} {incr x} {
-        set curr [expr {$x % ${num_tiles}}] 
+        set curr [expr {$x % ${num_tiles}}]
         set pos [expr {$x / ${num_tiles}}]
         if {$pos < 10} {
             set_property -dict [list CONFIG.S0${pos}_HAS_DATA_FIFO {2}] [get_bd_cells axi_interconnect_tile_$curr]
@@ -216,7 +240,7 @@ for {set x 0} {$x < ${total_num_cores}} {incr x} {
 
   set_property -dict [list CONFIG.Width.VALUE_SRC USER] [get_bd_cells ap_ready_reg_$x]
   set_property -dict [list CONFIG.Width {1} CONFIG.Depth {1} CONFIG.DefaultData {0} CONFIG.AsyncInitVal {0} CONFIG.SyncInitVal {0} CONFIG.ShiftRegType {Fixed_Length} CONFIG.CE {true} CONFIG.SSET {false} CONFIG.SCLR {false} CONFIG.SINIT {false}] [get_bd_cells ap_ready_reg_$x]
-  
+
   connect_bd_net [get_bd_pins ap_ready_reg_$x/CLK] [get_bd_ports aclk]
   connect_bd_net [get_bd_pins constant_one/dout] [get_bd_pins ap_ready_reg_$x/D]
   connect_bd_net [get_bd_pins /fcuda_core_$x/ap_ready] [get_bd_pins ap_ready_reg_$x/CE]
@@ -237,7 +261,7 @@ for {set x 0} {$x < ${total_num_cores}} {incr x} {
 
   set_property -dict [list CONFIG.Width.VALUE_SRC USER] [get_bd_cells ap_idle_reg_$x]
   set_property -dict [list CONFIG.Width {1} CONFIG.Depth {1} CONFIG.DefaultData {0} CONFIG.AsyncInitVal {0} CONFIG.SyncInitVal {0} CONFIG.ShiftRegType {Fixed_Length} CONFIG.CE {true} CONFIG.SSET {false} CONFIG.SCLR {false} CONFIG.SINIT {false}] [get_bd_cells ap_idle_reg_$x]
- 
+
   connect_bd_net [get_bd_pins ap_idle_reg_$x/CLK] [get_bd_ports aclk]
   connect_bd_net [get_bd_pins constant_one/dout] [get_bd_pins ap_idle_reg_$x/D]
   connect_bd_net [get_bd_pins /fcuda_core_$x/ap_idle] [get_bd_pins ap_idle_reg_$x/CE]
@@ -258,7 +282,7 @@ for {set x 0} {$x < ${total_num_cores}} {incr x} {
 
   set_property -dict [list CONFIG.Width.VALUE_SRC USER] [get_bd_cells ap_done_reg_$x]
   set_property -dict [list CONFIG.Width {1} CONFIG.Depth {1} CONFIG.DefaultData {0} CONFIG.AsyncInitVal {0} CONFIG.SyncInitVal {0} CONFIG.ShiftRegType {Fixed_Length} CONFIG.CE {true} CONFIG.SSET {false} CONFIG.SCLR {false} CONFIG.SINIT {false}] [get_bd_cells ap_done_reg_$x]
- 
+
   connect_bd_net [get_bd_pins ap_done_reg_$x/CLK] [get_bd_ports aclk]
   connect_bd_net [get_bd_pins constant_one/dout] [get_bd_pins ap_done_reg_$x/D]
   connect_bd_net [get_bd_pins /fcuda_core_$x/ap_done] [get_bd_pins ap_done_reg_$x/CE]
@@ -289,7 +313,7 @@ save_bd_design
 assign_bd_address [get_bd_addr_segs {mig_7series_0/memmap/memaddr }]
 
 # generate output
-generate_target all [get_files  $prj_path/${project_name}.srcs/sources_1/bd/design_1/design_1.bd] 
+generate_target all [get_files  $prj_path/${project_name}.srcs/sources_1/bd/design_1/design_1.bd]
 
 # make wrapper
 make_wrapper -files [get_files $prj_path/${project_name}.srcs/sources_1/bd/design_1/design_1.bd] -top
@@ -306,10 +330,10 @@ if {$sim_flow == 1} {
     add_files -fileset sim_1 -norecurse -scan_for_includes $ppFile_path/ddr3_model_parameters.vh
     import_files -fileset sim_1 -norecurse $ppFile_path/ddr3_model_parameters.vh
 
-    add_files -fileset sim_1 -norecurse -scan_for_includes $ppFile_path/ddr3_model.v 
+    add_files -fileset sim_1 -norecurse -scan_for_includes $ppFile_path/ddr3_model.v
     add_files -fileset sim_1 -norecurse -scan_for_includes $ppFile_path/wiredly.v
 
-    import_files -fileset sim_1 -norecurse $ppFile_path/ddr3_model.v 
+    import_files -fileset sim_1 -norecurse $ppFile_path/ddr3_model.v
     import_files -fileset sim_1 -norecurse $ppFile_path/wiredly.v
 
     add_files -fileset sim_1 -norecurse -scan_for_includes $ppFile_path/sim_tb_top.v
@@ -331,7 +355,7 @@ if {$syn_flow == 1} {
     reset_run synth_1
     launch_runs impl_1
     wait_on_run synth_1
-    wait_on_run impl_1                      
+    wait_on_run impl_1
 
     open_run synth_1
     report_utilization -file $rptDir/post_synthesize_util.rpt

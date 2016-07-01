@@ -1,3 +1,26 @@
+//============================================================================//
+//    FCUDA
+//    Copyright (c) <2016>
+//    <University of Illinois at Urbana-Champaign>
+//    <University of California at Los Angeles>
+//    All rights reserved.
+//
+//    Developed by:
+//
+//        <ES CAD Group & IMPACT Research Group>
+//            <University of Illinois at Urbana-Champaign>
+//            <http://dchen.ece.illinois.edu/>
+//            <http://impact.crhc.illinois.edu/>
+//
+//        <VAST Laboratory>
+//            <University of California at Los Angeles>
+//            <http://vast.cs.ucla.edu/>
+//
+//        <Hardware Research Group>
+//            <Advanced Digital Sciences Center>
+//            <http://adsc.illinois.edu/>
+//============================================================================//
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <iostream>
@@ -195,7 +218,7 @@ double axi_interconn_lv1[16][5] = {
   {2697, 5326, 8519, 10, 0},
   {2967, 5977, 9112, 10.5, 0},
   {3120, 6334, 9695, 11, 0},
-  {3348, 6766, 10273, 11.5, 0}}; 
+  {3348, 6766, 10273, 11.5, 0}};
 
 // AXI with clock domain sync
 //0: Slice, 1: LUT, 2: FF, 3: BRAM, 4: DSP
@@ -215,7 +238,7 @@ double axi_interconn_lv2[16][5] = {
   {3018, 5665, 9464, 10, 0},
   {3234, 6312, 10057, 10.5, 0},
   {3404, 6673, 10640, 11, 0},
-  {3674, 7104, 11218, 11.5, 0}}; 
+  {3674, 7104, 11218, 11.5, 0}};
 
 #define DEBUG
 #undef  DEBUG
@@ -338,10 +361,10 @@ void initialize() {
   appTransferC1 = APP_TRANSFER_C1;
   appTransferC2 = APP_TRANSFER_C2;
   //appTransferC3 = APP_TRANSFER_C3;
-                  
+
   appMaxUnroll = APP_UNROLL_MAX;
   appThreadBlkNum = APP_THREADBLOCK_NUM;
-  arrayAssignHelper(ap_profile, ap_profile_mm_int); 
+  arrayAssignHelper(ap_profile, ap_profile_mm_int);
   taskIter = APP_TASK_ITER;
 }
 
@@ -361,7 +384,7 @@ void output_config(FILE * f, config c)
 void output_config_full(FILE * f, config c) {
   fprintf(f, "Config:%*d  ", 4, c.id);
   printf("Tiles: %dx%d  core: %*d  unroll: %*d  mpart: %*d  reg: %*d  cyc: %*ld  period: %f  lat: %*e\n",
-    c.tile.first, c.tile.second, 2, c.core, 2, c.unroll, 2, c.mem, 6, 
+    c.tile.first, c.tile.second, 2, c.core, 2, c.unroll, 2, c.mem, 6,
     c.FF, 10, c.cycle, c.period, 13, c.latency);
   fflush(f);
 }
@@ -394,7 +417,7 @@ int log2val (int inp)
   return logval;
 }
 
-void findMinMaxParams(std::list<config> &cfgLst) 
+void findMinMaxParams(std::list<config> &cfgLst)
 {
   config minConf, maxConf;
   int minThreads, maxThreads;
@@ -460,17 +483,17 @@ int run_hls(int unroll, int mem)
   if (block_cycle[unroll][mem])
     return block_cycle[unroll][mem];
 
-  sprintf(command, "python get_compute_latency.py {{app}} %d %d", 
+  sprintf(command, "python get_compute_latency.py {{app}} %d %d",
             unroll, mem);
   fprintf(stderr, "execute script get_compute_latency.py [%s]\n", command);
   system(command);
-   
+
   freport = fopen("compute_latency.txt", "r");
   if (!freport) {
     fprintf(stderr, "cannot open report file!\n");
     exit(1);
-  } 
-    
+  }
+
   fscanf(freport, "%d", &latency);
 
   fclose(freport);
@@ -478,7 +501,7 @@ int run_hls(int unroll, int mem)
   block_cycle[unroll][mem] = latency;
   printf("HLS DATA: unroll = %d, mem = %d, latency = %d\n",
            unroll, mem, latency);
-  return latency;             
+  return latency;
 }
 
 
@@ -507,7 +530,7 @@ double estimate_period(int tileGridY, int tileGridX, int cfgTileSlice, int unrol
 
   double util = (double) cfgTileSlice / ((devSliceY / tileGridY) * (devSliceX / tileGridX));
   //period =  (double) (APP_FREQ_C0 + APP_FREQ_C1 * sqrt(minDiag2));
-  period  = (double) (APP_FREQ_C0 + APP_FREQ_C1 * sqrt(minDiag2) + 
+  period  = (double) (APP_FREQ_C0 + APP_FREQ_C1 * sqrt(minDiag2) +
             APP_FREQ_C2 * util + APP_FREQ_C3 * unroll + APP_FREQ_C4 * mem);
   return period;
 }
@@ -571,12 +594,12 @@ config estimate_perf(config cfg, int cfgSize, int is_profiled) {
         appSliceC2 * cfg.core * cfg.unroll +
         appSliceC3 * cfg.core * cfg.mem +
         appSliceC4 * cfg.unroll * cfg.mem + axi_interconn_lv1[cfg.core - 1][0];
-  cfgTileBram = appBramC0 + 
+  cfgTileBram = appBramC0 +
         appBramC1 * cfg.core +
         appBramC2 * cfg.core * cfg.unroll +
         appBramC3 * cfg.core * cfg.mem +
         appBramC4 * cfg.unroll * cfg.mem + axi_interconn_lv1[cfg.core - 1][3];
-  cfgTileDsp = appDspC0 + 
+  cfgTileDsp = appDspC0 +
         appDspC1 * cfg.core +
         appDspC2 * cfg.core * cfg.unroll +
         appDspC3 * cfg.core * cfg.mem +
@@ -618,7 +641,7 @@ config estimate_perf(config cfg, int cfgSize, int is_profiled) {
       //(long)appTransferC3 * tileNum +
       (long)appTransferC2 * tileNum * cfg.core * (hier - 1);
   if (transfer_latency < 0) {
-    printf("Got negative latency: %ld. Please profile more data, or revise the model", 
+    printf("Got negative latency: %ld. Please profile more data, or revise the model",
         transfer_latency);
     exit(1);
   }
@@ -679,7 +702,7 @@ void exhaustive_search()
   int tItr;
 
   // iterate through tile configurations
-  for (tItr = 0; tItr < dev_tiles.size(); tItr++) { 
+  for (tItr = 0; tItr < dev_tiles.size(); tItr++) {
     tileX = dev_tiles[tItr].first;
     tileY = dev_tiles[tItr].second;
 
@@ -713,24 +736,24 @@ void exhaustive_search()
           res = estimate_perf(cfg, (int)allConfigs.size(), is_profiled);
           // we should be conservative about slice. Comment for now
           //if (res.slice > devSliceNum) continue;
-          if (res.lut > devLutNum || 
-              res.FF > devFFNum || 
-              res.bram > devBramNum || 
+          if (res.lut > devLutNum ||
+              res.FF > devFFNum ||
+              res.bram > devBramNum ||
               res.dsp > devDspNum) {
             continue;
           }
-                            
+
           int res_total_cores = res.core * res.tile.first * res.tile.second;
-          int SLP_total_cores = SLP_cfg_best.core * 
-                                  SLP_cfg_best.tile.first * 
+          int SLP_total_cores = SLP_cfg_best.core *
+                                  SLP_cfg_best.tile.first *
                                   SLP_cfg_best.tile.second;
 
-          if (res.mem ==1 && res.unroll == 1 && 
+          if (res.mem ==1 && res.unroll == 1 &&
               res_total_cores > SLP_total_cores)
             SLP_cfg_best = res;
 
-          if (res.mem ==1 && res.unroll == 1 && 
-              tileX == 1 && tileY == 1 && 
+          if (res.mem ==1 && res.unroll == 1 &&
+              tileX == 1 && tileY == 1 &&
               res.core > SLP_cfg_singleTile.core)
             SLP_cfg_singleTile = res;
 
@@ -810,14 +833,14 @@ double binary_search(int dim)
     c.unroll = val[0]; c.mem = val[1];
     c.core   = best_core[val[0]][val[1]][0];
     c.tile   = std::pair<int, int> (
-        best_tile[val[0]][val[1]][0][0], 
+        best_tile[val[0]][val[1]][0][0],
         best_tile[val[0]][val[1]][1][0]);
 
     res = estimate_perf(c, (int)binaryConfigs.size(), is_profiled);
 
-    if (res.lut > devLutNum || 
-        res.FF > devFFNum || 
-        res.bram > devBramNum || 
+    if (res.lut > devLutNum ||
+        res.FF > devFFNum ||
+        res.bram > devBramNum ||
         res.dsp > devDspNum) {
       printf("Oversized binary search result!\n");
       return -1;
@@ -827,15 +850,15 @@ double binary_search(int dim)
       printf("Memory bound!\n");
       c.core   = best_core[val[0]][val[1]][1];
       c.tile   = std::pair<int, int> (
-          best_tile[val[0]][val[1]][0][1], 
+          best_tile[val[0]][val[1]][0][1],
           best_tile[val[0]][val[1]][1][1]);
 
       res = estimate_perf(c, (int)binaryConfigs.size(), is_profiled);
     }
 
-    // TAN: The question here is whether we compare comp_latency 
-    // (without mem_latency consideration) or total latency 
-    // (including comp_latency and mem_latency). 
+    // TAN: The question here is whether we compare comp_latency
+    // (without mem_latency consideration) or total latency
+    // (including comp_latency and mem_latency).
     // I think we should go with the latter.
     if (binaryConfigs.size() == 0)
       best_config = res;
@@ -874,7 +897,7 @@ double binary_search(int dim)
   }
 
 #ifdef DEBUG
-  printf("%s  low: %d high: %d\n", 
+  printf("%s  low: %d high: %d\n",
       (dim == 0) ? "Unroll" : "MPART", low, high);
   fflush(stdout);
 #endif
@@ -910,7 +933,7 @@ double binary_search(int dim)
    res_midPls1 = binary_search(dim + 1);
 
 #ifdef DEBUG
-    printf("[%s] Estimation for midPls1 done\n", 
+    printf("[%s] Estimation for midPls1 done\n",
         (dim == 0) ? "Unroll" : "MPART");
     fflush(stdout);
 #endif
@@ -956,12 +979,12 @@ void binary_search_wrapper()
     unroll = cur.unroll;
     mem    = cur.mem;
     factor2 = cur.mem_latency;
-    factor = cur.period * 
-      (appThreadBlkNum + (tileY * tileX * cur.core -1)) / 
+    factor = cur.period *
+      (appThreadBlkNum + (tileY * tileX * cur.core -1)) /
     (tileY * tileX * cur.core);
 
     //this is for compute-bound
-    if(best_core[unroll][mem][0] == 0 || 
+    if(best_core[unroll][mem][0] == 0 ||
         factor < coeff[unroll][mem]) {
       best_core[unroll][mem][0] = cur.core;
       coeff[unroll][mem]     = factor;
@@ -972,7 +995,7 @@ void binary_search_wrapper()
       best_tile[unroll][mem][1][0] = tileY;
     }
     //this is for mem-bound
-    if (best_core[unroll][mem][1] == 0 || 
+    if (best_core[unroll][mem][1] == 0 ||
         factor2 < coeff2[unroll][mem]) {
       best_core[unroll][mem][1] = cur.core;
       coeff2[unroll][mem]    = cur.mem_latency;
@@ -994,14 +1017,14 @@ void binary_search_wrapper()
   binaryConfigs.clear();
   binary_search(0);
   printf("best binary search configuration\n");
-  printf("[%d] \t [tile]: %dx%d \t [core]:%d \t [unroll]:%d \t [lut]: %d \t [mem]:%d \t [period]:%f \t [cycle]:%ld \t [mem_latency]:%lf \t [cmp_latency]:%lf \t [latency]:%lf\n", 
-      best_config.id, 
-      best_config.tile.first, best_config.tile.second, 
-      best_config.core, best_config.unroll, best_config.lut, 
-      best_config.mem, best_config.period, 
-      best_config.cycle, 
-      best_config.mem_latency / 1e6, 
-      best_config.com_latency / 1e6, 
+  printf("[%d] \t [tile]: %dx%d \t [core]:%d \t [unroll]:%d \t [lut]: %d \t [mem]:%d \t [period]:%f \t [cycle]:%ld \t [mem_latency]:%lf \t [cmp_latency]:%lf \t [latency]:%lf\n",
+      best_config.id,
+      best_config.tile.first, best_config.tile.second,
+      best_config.core, best_config.unroll, best_config.lut,
+      best_config.mem, best_config.period,
+      best_config.cycle,
+      best_config.mem_latency / 1e6,
+      best_config.com_latency / 1e6,
       best_config.latency / 1e6);
 }
 
@@ -1031,7 +1054,7 @@ int main(int argc, char **argv) {
     config cur = *itr;
     if (i == 0)
       best_exhaustive = cur;
-    printf("%d \t %dx%d \t ", 
+    printf("%d \t %dx%d \t ",
         cur.id, cur.tile.first, cur.tile.second);
 
     printf(" %d \t %d \t %d \t   ",
@@ -1043,8 +1066,8 @@ int main(int argc, char **argv) {
         7, cur.lut,
         4, cur.dsp, 4, cur.bram);
 
-    printf("%*f \t %*ld \t %*ld \t %*ld \t %*.0f \t %*.0f \t %*.0f\n", 
-        10, cur.period, 10, cur.cycle, 10, cur.transfer_cycle, 
+    printf("%*f \t %*ld \t %*ld \t %*ld \t %*.0f \t %*.0f \t %*.0f\n",
+        10, cur.period, 10, cur.cycle, 10, cur.transfer_cycle,
         10, cur.transfer_cycle * cur.tripcount, 10, cur.mem_latency / 1000000,
         11, cur.com_latency / 1000000, 11, cur.latency / 1000000);
 
@@ -1125,7 +1148,7 @@ int main(int argc, char **argv) {
     }
 
     if (cur.unroll == 16 && cur.mem == 16) {
-      if (cur.tile.first * cur.tile.second * cur.core > 
+      if (cur.tile.first * cur.tile.second * cur.core >
           baseline.tile.first * baseline.tile.second * baseline.core)
         baseline = cur;
     }
@@ -1135,70 +1158,70 @@ int main(int argc, char **argv) {
   com_bestcfg = best_config;
   sys_bestcfg = best_config;
 
-  printf("COM_BEST: %d, lat=%lf, com_lat=%lf, mem_lat=%lf, slice=%d, lut=%d, ff=%d, bram=%d, dsp=%d\n", 
-      com_bestcfg.tile.first * com_bestcfg.tile.second * com_bestcfg.core, 
-      com_bestcfg.latency / 1e6, 
-      com_bestcfg.com_latency / 1e6, 
+  printf("COM_BEST: %d, lat=%lf, com_lat=%lf, mem_lat=%lf, slice=%d, lut=%d, ff=%d, bram=%d, dsp=%d\n",
+      com_bestcfg.tile.first * com_bestcfg.tile.second * com_bestcfg.core,
+      com_bestcfg.latency / 1e6,
+      com_bestcfg.com_latency / 1e6,
       com_bestcfg.mem_latency / 1e6,
-      com_bestcfg.slice, com_bestcfg.lut, com_bestcfg.FF, 
+      com_bestcfg.slice, com_bestcfg.lut, com_bestcfg.FF,
       com_bestcfg.bram, com_bestcfg.dsp);
 
-  printf("SYS_BEST: %d, lat=%lf, sys_lat=%lf, mem_lat=%lf, slice=%d, lut=%d, ff=%d, bram=%d, dsp=%d\n", 
-      sys_bestcfg.tile.first * sys_bestcfg.tile.second * sys_bestcfg.core, 
-      sys_bestcfg.latency / 1e6, 
-      sys_bestcfg.com_latency / 1e6, 
+  printf("SYS_BEST: %d, lat=%lf, sys_lat=%lf, mem_lat=%lf, slice=%d, lut=%d, ff=%d, bram=%d, dsp=%d\n",
+      sys_bestcfg.tile.first * sys_bestcfg.tile.second * sys_bestcfg.core,
+      sys_bestcfg.latency / 1e6,
+      sys_bestcfg.com_latency / 1e6,
       sys_bestcfg.mem_latency / 1e6,
-      sys_bestcfg.slice, sys_bestcfg.lut, sys_bestcfg.FF, 
+      sys_bestcfg.slice, sys_bestcfg.lut, sys_bestcfg.FF,
               sys_bestcfg.bram, sys_bestcfg.dsp);
 
-  printf("Baseline: %d, lat=%lf, com_lat=%lf, mem_lat=%lf, slice=%d, lut=%d, ff=%d, bram=%d, dsp=%d, unroll=%d, mpart = %d\n", 
-      baseline.tile.first * baseline.tile.second * baseline.core, 
+  printf("Baseline: %d, lat=%lf, com_lat=%lf, mem_lat=%lf, slice=%d, lut=%d, ff=%d, bram=%d, dsp=%d, unroll=%d, mpart = %d\n",
+      baseline.tile.first * baseline.tile.second * baseline.core,
       baseline.latency, baseline.com_latency, baseline.mem_latency,
-      baseline.slice, baseline.lut, baseline.FF, 
+      baseline.slice, baseline.lut, baseline.FF,
       baseline.bram, baseline.dsp, baseline.unroll, baseline.mem);
 
   printf("Computation Speed-up: %lf\n", baseline.com_latency / com_bestcfg.com_latency);
   printf("System Speed-up: %lf\n", (baseline.mem_latency + baseline.com_latency) / sys_bestcfg.latency);
-	
-        
+
+
   printf("best configuration from exhaustive search\n");
-  printf("[%d] \t [tile]: %dx%d \t [core]:%d \t [unroll]:%d \t [mem]:%d \t [period]:%f \t [cycle]:%ld \t [mem_latency]:%lf\t [cmp_latency]:%lf\t [latency]:%lf\n", 
-      best_exhaustive.id, best_exhaustive.tile.first, best_exhaustive.tile.second, 
-      best_exhaustive.core, best_exhaustive.unroll, best_exhaustive.mem, 
-      best_exhaustive.period, best_exhaustive.cycle, 
-      best_exhaustive.mem_latency / 1e6, 
-      best_exhaustive.com_latency / 1e6, 
+  printf("[%d] \t [tile]: %dx%d \t [core]:%d \t [unroll]:%d \t [mem]:%d \t [period]:%f \t [cycle]:%ld \t [mem_latency]:%lf\t [cmp_latency]:%lf\t [latency]:%lf\n",
+      best_exhaustive.id, best_exhaustive.tile.first, best_exhaustive.tile.second,
+      best_exhaustive.core, best_exhaustive.unroll, best_exhaustive.mem,
+      best_exhaustive.period, best_exhaustive.cycle,
+      best_exhaustive.mem_latency / 1e6,
+      best_exhaustive.com_latency / 1e6,
       best_exhaustive.latency / 1e6);
 
-  printf("accuracy of modified binary search result: %f\%\n", 
+  printf("accuracy of modified binary search result: %f\%\n",
       (best_config.latency - best_exhaustive.latency) * 100 / best_config.latency);
 
   if (SLP_cfg_best.tile.first * SLP_cfg_best.tile.second * SLP_cfg_best.core > 16)
     SLP_cfg_singleTile.core = 16;
-  
+
   config res;
   //res = estimate_perf(SLP_cfg_singleTile, (int)allConfigs.size(), 1);
   res = estimate_perf(SLP_cfg_singleTile, (int)allConfigs.size(), 0);
   SLP_cfg_singleTile = res;
 
   printf("SLP best configuration\n");
-  printf("[%d] \t [tile]: %dx%d \t [core]:%d \t [unroll]:%d \t [mem]:%d \t [period]:%f \t [cycle]:%ld \t [mem_latency]:%lf\t [cmp_latency]:%lf\t [latency]:%lf\n", 
-      SLP_cfg_best.id, SLP_cfg_best.tile.first, SLP_cfg_best.tile.second, 
-      SLP_cfg_best.core, SLP_cfg_best.unroll, SLP_cfg_best.mem, 
-      SLP_cfg_best.period, SLP_cfg_best.cycle, 
-      SLP_cfg_best.mem_latency / 1e6, SLP_cfg_best.com_latency / 1e6, 
+  printf("[%d] \t [tile]: %dx%d \t [core]:%d \t [unroll]:%d \t [mem]:%d \t [period]:%f \t [cycle]:%ld \t [mem_latency]:%lf\t [cmp_latency]:%lf\t [latency]:%lf\n",
+      SLP_cfg_best.id, SLP_cfg_best.tile.first, SLP_cfg_best.tile.second,
+      SLP_cfg_best.core, SLP_cfg_best.unroll, SLP_cfg_best.mem,
+      SLP_cfg_best.period, SLP_cfg_best.cycle,
+      SLP_cfg_best.mem_latency / 1e6, SLP_cfg_best.com_latency / 1e6,
       SLP_cfg_best.latency / 1e6);
 
 
   printf("SLP single tile configuration\n");
-  printf("[%d] \t [tile]: %dx%d \t [core]:%d \t [unroll]:%d \t [mem]:%d \t [period]:%f \t [cycle]:%ld \t [mem_latency]:%lf\t [cmp_latency]:%lf\t [latency]:%lf\n", 
-      SLP_cfg_singleTile.id, 
-      SLP_cfg_singleTile.tile.first, SLP_cfg_singleTile.tile.second, 
-      SLP_cfg_singleTile.core, SLP_cfg_singleTile.unroll, 
-      SLP_cfg_singleTile.mem, SLP_cfg_singleTile.period, 
-      SLP_cfg_singleTile.cycle, 
-      SLP_cfg_singleTile.mem_latency / 1e6, 
-      SLP_cfg_singleTile.com_latency / 1e6, 
+  printf("[%d] \t [tile]: %dx%d \t [core]:%d \t [unroll]:%d \t [mem]:%d \t [period]:%f \t [cycle]:%ld \t [mem_latency]:%lf\t [cmp_latency]:%lf\t [latency]:%lf\n",
+      SLP_cfg_singleTile.id,
+      SLP_cfg_singleTile.tile.first, SLP_cfg_singleTile.tile.second,
+      SLP_cfg_singleTile.core, SLP_cfg_singleTile.unroll,
+      SLP_cfg_singleTile.mem, SLP_cfg_singleTile.period,
+      SLP_cfg_singleTile.cycle,
+      SLP_cfg_singleTile.mem_latency / 1e6,
+      SLP_cfg_singleTile.com_latency / 1e6,
       SLP_cfg_singleTile.latency / 1e6);
 
   printf("MLP binary search over SLP_best \t MLP over SLP_single\n");
@@ -1208,7 +1231,7 @@ int main(int argc, char **argv) {
   printf("MLP exhaustive search over SLP_best \t MLP over SLP_single\n");
   printf("%lf\t", SLP_cfg_best.latency / best_exhaustive.latency);
   printf("%lf\n", SLP_cfg_singleTile.latency / best_exhaustive.latency);
-              
+
   return 0;
 }
 

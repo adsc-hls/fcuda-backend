@@ -1,3 +1,26 @@
+################################################################################
+##    FCUDA
+##    Copyright (c) <2016>
+##    <University of Illinois at Urbana-Champaign>
+##    <University of California at Los Angeles>
+##    All rights reserved.
+##
+##    Developed by:
+##
+##        <ES CAD Group & IMPACT Research Group>
+##            <University of Illinois at Urbana-Champaign>
+##            <http://dchen.ece.illinois.edu/>
+##            <http://impact.crhc.illinois.edu/>
+##
+##        <VAST Laboratory>
+##            <University of California at Los Angeles>
+##            <http://vast.cs.ucla.edu/>
+##
+##        <Hardware Research Group>
+##            <Advanced Digital Sciences Center>
+##            <http://adsc.illinois.edu/>
+################################################################################
+
 #!/usr/bin/python
 import logging
 import sys
@@ -6,15 +29,15 @@ from util import pos_in_list
 class RoutingTable(object):
   """Routing Table class"""
   def __init__(self):
-    # single routing table has 4 x 32 bits 
+    # single routing table has 4 x 32 bits
     # For simplicity we will represent this as
     # list of 4 x (list of 32 x 1 )  items
     self.num_fields = 4
 
-    # number of bits --this can be changed later 
+    # number of bits --this can be changed later
     # depending on the size of the network
     # log2(num_compute_nodes + num_memory_node + num_router_nodes)
-    self.field_size = 32    
+    self.field_size = 32
     self.mapping = []
 
   def setFieldSize(self, field_size_val):
@@ -40,7 +63,7 @@ class RoutingTable(object):
       table[i['outport']][i['dest']] = 1
     return table
 
-  def getPackedTable(self): 
+  def getPackedTable(self):
     """Get table in packed integer form"""
     result = [0] * self.num_fields
     for idx, val in enumerate(self.mapping):
